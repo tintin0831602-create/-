@@ -1,0 +1,21 @@
+node_modules/
+dist/
+
+.env
+.env.*
+!.env.example
+
+data/*.db
+data/*.db-*
+data/*.sqlite
+data/*.sqlite-*
+
+logs/
+*.log
+*.pid
+
+tmp/
+.DS_Store
+
+# Generated large source images. The site uses the optimized JPG files.
+public/assets/*.png

@@ -1,0 +1,285 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f3ee;
+  --ink: #1f2933;
+  --muted: #687482;
+  --line: #d9d4cb;
+  --panel: #fffdf8;
+  --accent: #176b65;
+  --accent-2: #b84a37;
+  --soft: #e8f1ee;
+  --warn: #fff1d6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Noto Sans TC", sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.shell {
+  width: min(1180px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 40px;
+}
+
+.topbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: 34px;
+  letter-spacing: 0;
+}
+
+h2 {
+  font-size: 18px;
+}
+
+.pin-box,
+.panel-head {
+  display: flex;
+  gap: 10px;
+}
+
+input,
+select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: white;
+  padding: 0 12px;
+  color: var(--ink);
+}
+
+button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  padding: 0 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 22px 0;
+}
+
+.metric,
+.coach-info,
+.panel,
+.member {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.metric {
+  padding: 16px;
+}
+
+.metric span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.metric strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 28px;
+}
+
+.coach-info {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  background: var(--soft);
+}
+
+.coach-info[hidden] {
+  display: none;
+}
+
+.coach-info span {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.coach-info strong {
+  font-size: 24px;
+}
+
+.coach-info small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+.panel {
+  padding: 18px;
+}
+
+.member-panel {
+  min-height: 520px;
+  grid-row: span 2;
+}
+
+.members {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.member {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease;
+}
+
+.member:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.name {
+  font-weight: 800;
+}
+
+.meta,
+.macro,
+.access {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--accent);
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.badge.warn {
+  background: var(--warn);
+  color: var(--accent-2);
+}
+
+.action-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.notice {
+  min-height: 22px;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.notice.error {
+  color: var(--accent-2);
+}
+
+.empty {
+  display: grid;
+  gap: 8px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  color: var(--muted);
+}
+
+.empty strong {
+  color: var(--ink);
+}
+
+@media (max-width: 820px) {
+  .topbar,
+  .panel-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .metrics,
+  .workspace,
+  .member,
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .member-panel {
+    grid-row: auto;
+  }
+}

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hermes 管理台</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <p class="eyebrow">Hermes Nutrition</p>
+          <h1>教練管理台</h1>
+        </div>
+        <div class="pin-box">
+          <input id="pin" type="password" placeholder="管理 PIN" autocomplete="current-password" />
+          <button id="refresh">更新</button>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="狀態總覽">
+        <div id="coachInfo" class="coach-info" hidden></div>
+        <div class="metric">
+          <span>成員</span>
+          <strong id="totalUsers">-</strong>
+        </div>
+        <div class="metric">
+          <span>啟用中</span>
+          <strong id="activeUsers">-</strong>
+        </div>
+        <div class="metric">
+          <span>教練</span>
+          <strong id="coachUsers">-</strong>
+        </div>
+        <div class="metric">
+          <span>日期</span>
+          <strong id="today">-</strong>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <div class="panel member-panel">
+          <div class="panel-head">
+            <h2>成員與今日進度</h2>
+            <input id="search" type="search" placeholder="搜尋姓名" />
+          </div>
+          <div id="members" class="members"></div>
+        </div>
+
+        <div class="panel action-panel">
+          <h2>授權</h2>
+          <label>
+            成員姓名
+            <input id="grantName" placeholder="例如 Amy" />
+          </label>
+          <label>
+            角色
+            <select id="grantRole">
+              <option value="student">學員</option>
+              <option value="coach">教練</option>
+            </select>
+          </label>
+          <label>
+            教練學員名額
+            <input id="studentQuota" type="number" min="0" step="1" value="10" />
+          </label>
+          <label>
+            權限
+            <select id="grantDuration">
+              <option value="7">7 天試用</option>
+              <option value="30">30 天訂閱</option>
+              <option value="365">一年訂閱</option>
+              <option value="permanent">永久使用</option>
+              <option value="disabled">停用</option>
+            </select>
+          </label>
+          <button id="grant">套用授權</button>
+          <p id="notice" class="notice"></p>
+        </div>
+
+        <div class="panel action-panel">
+          <h2>修改學員數值</h2>
+          <label>
+            學員姓名
+            <input id="editName" placeholder="例如 Amy" />
+          </label>
+          <div class="field-grid">
+            <label>
+              熱量
+              <input id="editCalories" type="number" min="1" step="1" placeholder="2200" />
+            </label>
+            <label>
+              蛋白
+              <input id="editProtein" type="number" min="1" step="1" placeholder="150" />
+            </label>
+            <label>
+              脂肪
+              <input id="editFat" type="number" min="1" step="1" placeholder="70" />
+            </label>
+            <label>
+              碳水
+              <input id="editCarbs" type="number" min="1" step="1" placeholder="250" />
+            </label>
+          </div>
+          <div class="field-grid">
+            <label>
+              性別
+              <select id="editSex">
+                <option value="">不修改</option>
+                <option value="男">男</option>
+                <option value="女">女</option>
+              </select>
+            </label>
+            <label>
+              年齡
+              <input id="editAge" type="number" min="1" step="1" placeholder="30" />
+            </label>
+            <label>
+              身高 cm
+              <input id="editHeight" type="number" min="1" step="0.1" placeholder="175" />
+            </label>
+            <label>
+              體重 kg
+              <input id="editWeight" type="number" min="1" step="0.1" placeholder="70" />
+            </label>
+          </div>
+          <button id="saveUser">儲存數值</button>
+        </div>
+      </section>
+    </main>
+    <script src="/admin/app.js" type="module"></script>
+  </body>
+</html>

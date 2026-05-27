@@ -2,6 +2,7 @@ const state = {
   users: [],
   mode: "owner",
   coach: null,
+  weekly: null,
 };
 
 const els = {
@@ -30,20 +31,39 @@ const els = {
   editHeight: document.querySelector("#editHeight"),
   editWeight: document.querySelector("#editWeight"),
   saveUser: document.querySelector("#saveUser"),
+  tabs: document.querySelectorAll(".tab"),
+  panels: document.querySelectorAll(".tab-panel"),
+  guideCards: document.querySelectorAll(".guide-card"),
+  guideOutput: document.querySelector("#guideOutput"),
+  loadWeek: document.querySelector("#loadWeek"),
+  weekSummary: document.querySelector("#weekSummary"),
+  trend: document.querySelector("#trend"),
+  dayPicker: document.querySelector("#dayPicker"),
+  dayEntries: document.querySelector("#dayEntries"),
+  coachPinName: document.querySelector("#coachPinName"),
+  coachPinDuration: document.querySelector("#coachPinDuration"),
+  coachPinQuota: document.querySelector("#coachPinQuota"),
+  copyCoachCommand: document.querySelector("#copyCoachCommand"),
+  coachCommand: document.querySelector("#coachCommand"),
 };
 
 els.pin.value = localStorage.getItem("hermesAdminPin") || "";
-els.refresh.addEventListener("click", () => {
-  loadSummary().catch(showError);
-});
+els.refresh.addEventListener("click", () => loadSummary().catch(showError));
 els.pin.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    loadSummary().catch(showError);
-  }
+  if (event.key === "Enter") loadSummary().catch(showError);
 });
 els.search.addEventListener("input", renderMembers);
 els.grant.addEventListener("click", grantAccess);
 els.saveUser.addEventListener("click", saveUserValues);
+els.loadWeek.addEventListener("click", () => loadWeeklyReview().catch(showError));
+els.copyCoachCommand.addEventListener("click", buildCoachPinCommand);
+els.tabs.forEach((tab) => tab.addEventListener("click", () => activateTab(tab.dataset.tab)));
+els.guideCards.forEach((card) =>
+  card.addEventListener("click", () => {
+    els.guideOutput.textContent = card.dataset.template;
+    navigator.clipboard?.writeText(card.dataset.template).catch(() => {});
+  }),
+);
 
 loadSummary().catch(showError);
 
@@ -63,6 +83,11 @@ async function loadSummary() {
   renderCoachInfo();
   renderAccessControls();
   setNotice(`已載入 ${data.totals.users} 位成員。${state.mode === "coach" ? "目前是教練管理模式。" : ""}`);
+}
+
+function activateTab(tabName) {
+  els.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === tabName));
+  els.panels.forEach((panel) => panel.classList.toggle("active", panel.id === `${tabName}Panel`));
 }
 
 function renderCoachInfo() {
@@ -135,8 +160,104 @@ function renderMembers() {
     .join("");
 
   document.querySelectorAll(".member").forEach((node) => {
-    node.addEventListener("click", () => fillEditor(node.dataset.name));
+    node.addEventListener("click", () => {
+      fillEditor(node.dataset.name);
+      loadWeeklyReview().catch(showError);
+    });
   });
+}
+
+async function loadWeeklyReview() {
+  const name = els.editName.value.trim() || state.users[0]?.display_name || "";
+  if (!name) {
+    setNotice("請先選擇一位學員。", true);
+    return;
+  }
+  const data = await apiGet(`/api/admin/weekly?name=${encodeURIComponent(name)}`);
+  state.weekly = data;
+  renderWeeklyReview(data);
+}
+
+function renderWeeklyReview(data) {
+  const surplus = Math.round(data.week_totals.surplus_calories);
+  const surplusText = surplus >= 0 ? `盈餘 ${surplus} kcal` : `赤字 ${Math.abs(surplus)} kcal`;
+  els.weekSummary.innerHTML = `
+    <div><span>區間</span><strong>${formatShortDate(data.start_date)} - ${formatShortDate(data.end_date)}</strong></div>
+    <div><span>本週熱量</span><strong>${Math.round(data.week_totals.calories)} kcal</strong></div>
+    <div><span>熱量盈虧</span><strong class="${surplus >= 0 ? "surplus" : "deficit"}">${surplusText}</strong></div>
+    <div><span>三大營養素</span><strong>P${Math.round(data.week_totals.protein_g)} F${Math.round(data.week_totals.fat_g)} C${Math.round(data.week_totals.carbs_g)}</strong></div>
+  `;
+  renderTrend(data);
+  renderDayPicker(data);
+  renderDayEntries(data.days[data.days.length - 1]);
+}
+
+function renderTrend(data) {
+  const maxValue = Math.max(data.user.goal_calories, ...data.days.map((day) => day.totals.calories), 1);
+  els.trend.innerHTML = data.days
+    .map((day) => {
+      const height = Math.max(8, Math.round((day.totals.calories / maxValue) * 100));
+      const over = day.totals.calories > data.user.goal_calories;
+      return `
+        <button class="bar ${over ? "over" : ""}" data-date="${day.date}" style="--h:${height}%">
+          <span>${Math.round(day.totals.calories)}</span>
+          <small>${weekday(day.date)}</small>
+        </button>
+      `;
+    })
+    .join("");
+  els.trend.querySelectorAll(".bar").forEach((bar) => {
+    bar.addEventListener("click", () => {
+      const day = data.days.find((item) => item.date === bar.dataset.date);
+      if (day) renderDayEntries(day);
+    });
+  });
+}
+
+function renderDayPicker(data) {
+  els.dayPicker.innerHTML = data.days
+    .map(
+      (day) => `
+        <button data-date="${day.date}">
+          ${formatShortDate(day.date)}
+          <span>${Math.round(day.totals.calories)} kcal</span>
+        </button>
+      `,
+    )
+    .join("");
+  els.dayPicker.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const day = data.days.find((item) => item.date === button.dataset.date);
+      if (day) renderDayEntries(day);
+    });
+  });
+}
+
+function renderDayEntries(day) {
+  if (!day) return;
+  const surplus = Math.round(day.surplus_calories);
+  els.dayEntries.innerHTML = `
+    <div class="day-head">
+      <strong>${formatShortDate(day.date)}</strong>
+      <span>${Math.round(day.totals.calories)} kcal / P${Math.round(day.totals.protein_g)} F${Math.round(day.totals.fat_g)} C${Math.round(day.totals.carbs_g)}</span>
+      <em>${surplus >= 0 ? `盈餘 ${surplus}` : `赤字 ${Math.abs(surplus)}`} kcal</em>
+    </div>
+    ${
+      day.entries.length
+        ? day.entries
+            .map(
+              (entry) => `
+                <article class="food-entry">
+                  <strong>${escapeHtml(entry.food_name)}</strong>
+                  <span>${Math.round(entry.calories)} kcal · P${Math.round(entry.protein_g)} F${Math.round(entry.fat_g)} C${Math.round(entry.carbs_g)}</span>
+                  <small>${escapeHtml(entry.notes || entry.source)}</small>
+                </article>
+              `,
+            )
+            .join("")
+        : `<div class="empty compact"><strong>這天沒有紀錄</strong><span>學員可在 LINE 傳照片或「紀錄文字」。</span></div>`
+    }
+  `;
 }
 
 async function grantAccess() {
@@ -201,6 +322,15 @@ function fillEditor(name) {
   els.editWeight.value = user.weight_kg || "";
 }
 
+function buildCoachPinCommand() {
+  const name = els.coachPinName.value.trim() || "Coach";
+  const duration = els.coachPinDuration.value;
+  const quota = Number(els.coachPinQuota.value || 10);
+  const command = `產生教練PIN ${name} ${duration} ${quota}人`;
+  els.coachCommand.textContent = command;
+  navigator.clipboard?.writeText(command).catch(() => {});
+}
+
 function renderAccessControls() {
   const isCoach = state.mode === "coach";
   els.grantRole.value = "student";
@@ -222,7 +352,8 @@ function renderAccessControls() {
 }
 
 async function apiGet(path) {
-  const res = await fetch(`${path}?pin=${encodeURIComponent(els.pin.value)}`);
+  const separator = path.includes("?") ? "&" : "?";
+  const res = await fetch(`${path}${separator}pin=${encodeURIComponent(els.pin.value)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -242,7 +373,7 @@ async function apiPost(path, body) {
 async function friendlyError(res) {
   const text = await res.text();
   if (res.status === 401) {
-    return "管理 PIN 不正確，請輸入 .env 裡的 ADMIN_PIN 後按更新。";
+    return "管理 PIN 不正確，請輸入 Render 裡的 ADMIN_PIN 後按更新。";
   }
   if (res.status === 404) {
     return "找不到這位成員。請確認 LINE 裡的設定姓名是否一致。";
@@ -255,7 +386,7 @@ async function friendlyError(res) {
 
 function showError(error) {
   const message = error instanceof Error ? error.message : String(error);
-  setNotice(message || "載入失敗，請確認 bot 和 tunnel 是否還在執行。", true);
+  setNotice(message || "載入失敗，請確認服務是否正常。", true);
   if (!state.users.length) {
     setMetrics("-");
     els.members.innerHTML = `
@@ -303,6 +434,14 @@ function bodyText(user) {
 function optionalNumber(value) {
   if (value === "") return undefined;
   return Number(value);
+}
+
+function formatShortDate(date) {
+  return date.slice(5).replace("-", "/");
+}
+
+function weekday(date) {
+  return new Date(`${date}T00:00:00+08:00`).toLocaleDateString("zh-TW", { weekday: "short" });
 }
 
 function escapeHtml(value) {

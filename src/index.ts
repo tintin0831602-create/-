@@ -9,6 +9,7 @@ import {
   getCoachAccessByPin,
   grantAccess,
   getDailyTotals,
+  getEntriesInDateRange,
   getUser,
   listUsersForCoachKeys,
   countStudentsForCoachKey,
@@ -231,6 +232,75 @@ app.post("/api/admin/update-user", (req, res) => {
   res.json({ ok: true, user: getUser(user.line_user_id) });
 });
 
+app.get("/api/admin/weekly", (req, res) => {
+  const admin = getAdminContext(req);
+  if (!admin) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const name = String(req.query.name || "").trim();
+  if (!name) {
+    res.status(400).json({ error: "Missing name" });
+    return;
+  }
+
+  const user = findUserByDisplayName(name);
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  if (admin.kind === "coach" && !admin.coachKeys.includes(user.coach_owner_id || "")) {
+    res.status(403).json({ error: "Coach can only view owned students" });
+    return;
+  }
+
+  const today = todayInTimezone(config.timezone);
+  const dates = lastSevenDates(today);
+  const entries = getEntriesInDateRange(user.line_user_id, dates[0], dates[dates.length - 1]);
+  const days = dates.map((date) => {
+    const dayEntries = entries.filter((entry) => entry.consumed_date === date);
+    const totals = sumEntries(dayEntries);
+    return {
+      date,
+      totals,
+      surplus_calories: Math.round(totals.calories - user.goal_calories),
+      entries: dayEntries,
+    };
+  });
+  const weekTotals = days.reduce<{
+    calories: number;
+    protein_g: number;
+    fat_g: number;
+    carbs_g: number;
+    surplus_calories: number;
+  }>(
+    (total, day) => ({
+      calories: total.calories + day.totals.calories,
+      protein_g: total.protein_g + day.totals.protein_g,
+      fat_g: total.fat_g + day.totals.fat_g,
+      carbs_g: total.carbs_g + day.totals.carbs_g,
+      surplus_calories: total.surplus_calories + day.surplus_calories,
+    }),
+    { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0, surplus_calories: 0 },
+  );
+
+  res.json({
+    user: {
+      display_name: user.display_name,
+      goal_calories: user.goal_calories,
+      goal_protein_g: user.goal_protein_g,
+      goal_fat_g: user.goal_fat_g,
+      goal_carbs_g: user.goal_carbs_g,
+    },
+    start_date: dates[0],
+    end_date: dates[dates.length - 1],
+    week_totals: weekTotals,
+    days,
+  });
+});
+
 app.post("/webhook", express.raw({ type: "*/*" }), async (req, res) => {
   const signature = req.header("x-line-signature");
   const rawBody = req.body as Buffer;
@@ -407,6 +477,30 @@ function durationToDays(duration: "7" | "30" | "365" | "permanent" | "disabled")
   if (duration === "365") return 365;
   if (duration === "disabled") return 0;
   return undefined;
+}
+
+function lastSevenDates(today: string): string[] {
+  const dates: string[] = [];
+  const [year, month, day] = today.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const next = new Date(date);
+    next.setUTCDate(date.getUTCDate() - offset);
+    dates.push(next.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
+function sumEntries(entries: Array<{ calories: number; protein_g: number; fat_g: number; carbs_g: number }>) {
+  return entries.reduce(
+    (total, entry) => ({
+      calories: total.calories + entry.calories,
+      protein_g: total.protein_g + entry.protein_g,
+      fat_g: total.fat_g + entry.fat_g,
+      carbs_g: total.carbs_g + entry.carbs_g,
+    }),
+    { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0 },
+  );
 }
 
 function canCoachGrantDays(admin: Extract<AdminContext, { kind: "coach" }>, days: number): boolean {

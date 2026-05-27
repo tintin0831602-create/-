@@ -405,6 +405,20 @@ export function getDailyEntries(lineUserId: string, consumedDate: string): FoodE
     .all(lineUserId, consumedDate) as FoodEntry[];
 }
 
+export function getEntriesInDateRange(
+  lineUserId: string,
+  startDate: string,
+  endDate: string,
+): FoodEntry[] {
+  return db
+    .prepare(
+      `SELECT * FROM food_entries
+       WHERE line_user_id = ? AND consumed_date >= ? AND consumed_date <= ?
+       ORDER BY consumed_date ASC, created_at ASC, id ASC`,
+    )
+    .all(lineUserId, startDate, endDate) as FoodEntry[];
+}
+
 export function getDailyTotals(lineUserId: string, consumedDate: string): MacroTotals {
   const row = db
     .prepare(

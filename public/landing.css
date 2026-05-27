@@ -214,7 +214,9 @@ h2 {
 }
 
 .feature-grid,
-.step-grid {
+.step-grid,
+.onboarding-grid,
+.pricing-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
@@ -307,6 +309,118 @@ article p,
   font-weight: 900;
 }
 
+.onboarding-band {
+  border-radius: 24px;
+  background: #f3faf6;
+  padding: 42px;
+}
+
+.onboarding-band .section-head p:not(.eyebrow),
+.review-band p {
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.onboarding-grid article {
+  background: white;
+}
+
+.onboarding-grid article span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  background: var(--mint);
+  color: var(--deep);
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.onboarding-grid article p {
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: #f7faf8;
+  color: #34444d;
+  padding: 10px;
+  line-height: 1.5;
+}
+
+.review-band {
+  display: grid;
+  grid-template-columns: 1fr 0.9fr;
+  gap: 24px;
+  align-items: center;
+}
+
+.mock-review {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: white;
+  padding: 22px;
+}
+
+.mock-review div:not(.mock-bars) {
+  display: flex;
+  justify-content: space-between;
+  border-radius: 12px;
+  background: #f7faf8;
+  padding: 14px;
+}
+
+.mock-review span {
+  color: var(--deep);
+  font-weight: 900;
+}
+
+.mock-bars {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  align-items: end;
+  gap: 10px;
+  height: 140px;
+}
+
+.mock-bars i {
+  display: block;
+  border-radius: 10px 10px 4px 4px;
+  background: var(--green);
+}
+
+.mock-bars i:nth-child(1) { height: 64%; }
+.mock-bars i:nth-child(2) { height: 48%; }
+.mock-bars i:nth-child(3) { height: 82%; background: var(--coral); }
+.mock-bars i:nth-child(4) { height: 57%; }
+.mock-bars i:nth-child(5) { height: 72%; }
+.mock-bars i:nth-child(6) { height: 42%; }
+.mock-bars i:nth-child(7) { height: 69%; }
+
+.pricing-section {
+  margin-bottom: 110px;
+}
+
+.pricing-grid article {
+  display: grid;
+  gap: 12px;
+}
+
+.price-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--green);
+  color: white;
+  font-weight: 900;
+}
+
+.pricing-grid strong {
+  font-size: 28px;
+}
+
 footer {
   display: flex;
   justify-content: space-between;
@@ -363,6 +477,9 @@ footer strong {
   .feature-grid,
   .visual-pair,
   .step-grid,
+  .onboarding-grid,
+  .pricing-grid,
+  .review-band,
   .coach-band {
     grid-template-columns: 1fr;
   }

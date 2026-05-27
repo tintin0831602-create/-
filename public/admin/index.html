@@ -11,13 +11,20 @@
       <section class="topbar">
         <div>
           <p class="eyebrow">Hermes Nutrition</p>
-          <h1>教練管理台</h1>
+          <h1>營養管理工作台</h1>
         </div>
         <div class="pin-box">
           <input id="pin" type="password" placeholder="管理 PIN" autocomplete="current-password" />
           <button id="refresh">更新</button>
         </div>
       </section>
+
+      <nav class="tabs" aria-label="管理分區">
+        <button class="tab active" data-tab="student">學員區</button>
+        <button class="tab" data-tab="coach">教練區</button>
+        <button class="tab" data-tab="admin">管理員區</button>
+        <button class="tab" data-tab="billing">付款區</button>
+      </nav>
 
       <section class="metrics" aria-label="狀態總覽">
         <div id="coachInfo" class="coach-info" hidden></div>
@@ -39,44 +46,28 @@
         </div>
       </section>
 
-      <section class="workspace">
+      <section class="guide-strip" aria-label="新手教學">
+        <details open>
+          <summary>新手教學與下一步</summary>
+          <div class="guide-grid">
+            <button class="guide-card" data-template="我是學員 Amy">學員加入</button>
+            <button class="guide-card" data-template="設定目標 2000 120 60 250">設定目標</button>
+            <button class="guide-card" data-template="身體資料 男 30 175 70">BMR 資料</button>
+            <button class="guide-card" data-template="產生教練PIN Coach 30天 20人">教練開通</button>
+            <button class="guide-card" data-template="教練授權 Amy 30天">學員授權</button>
+            <button class="guide-card" data-template="今日 / 剩餘 / 刪除最後一筆">日常指令</button>
+          </div>
+          <p id="guideOutput" class="guide-output">點選上方功能，這裡會顯示可直接貼到 LINE 的指令。</p>
+        </details>
+      </section>
+
+      <section class="workspace tab-panel active" id="studentPanel">
         <div class="panel member-panel">
           <div class="panel-head">
             <h2>成員與今日進度</h2>
             <input id="search" type="search" placeholder="搜尋姓名" />
           </div>
           <div id="members" class="members"></div>
-        </div>
-
-        <div class="panel action-panel">
-          <h2>授權</h2>
-          <label>
-            成員姓名
-            <input id="grantName" placeholder="例如 Amy" />
-          </label>
-          <label>
-            角色
-            <select id="grantRole">
-              <option value="student">學員</option>
-              <option value="coach">教練</option>
-            </select>
-          </label>
-          <label>
-            教練學員名額
-            <input id="studentQuota" type="number" min="0" step="1" value="10" />
-          </label>
-          <label>
-            權限
-            <select id="grantDuration">
-              <option value="7">7 天試用</option>
-              <option value="30">30 天訂閱</option>
-              <option value="365">一年訂閱</option>
-              <option value="permanent">永久使用</option>
-              <option value="disabled">停用</option>
-            </select>
-          </label>
-          <button id="grant">套用授權</button>
-          <p id="notice" class="notice"></p>
         </div>
 
         <div class="panel action-panel">
@@ -126,6 +117,120 @@
             </label>
           </div>
           <button id="saveUser">儲存數值</button>
+        </div>
+
+        <div class="panel week-panel">
+          <div class="panel-head">
+            <h2>本週飲食回顧</h2>
+            <button id="loadWeek">查看週回顧</button>
+          </div>
+          <div id="weekSummary" class="week-summary"></div>
+          <div id="trend" class="trend" aria-label="熱量趨勢圖"></div>
+          <div id="dayPicker" class="day-picker"></div>
+          <div id="dayEntries" class="day-entries"></div>
+        </div>
+      </section>
+
+      <section class="workspace tab-panel" id="coachPanel">
+        <div class="panel action-panel">
+          <h2>授權學員</h2>
+          <label>
+            成員姓名
+            <input id="grantName" placeholder="例如 Amy" />
+          </label>
+          <label>
+            角色
+            <select id="grantRole">
+              <option value="student">學員</option>
+              <option value="coach">教練</option>
+            </select>
+          </label>
+          <label>
+            教練學員名額
+            <input id="studentQuota" type="number" min="0" step="1" value="10" />
+          </label>
+          <label>
+            權限
+            <select id="grantDuration">
+              <option value="7">7 天試用</option>
+              <option value="30">30 天訂閱</option>
+              <option value="365">一年訂閱</option>
+              <option value="permanent">永久使用</option>
+              <option value="disabled">停用</option>
+            </select>
+          </label>
+          <button id="grant">套用授權</button>
+          <p id="notice" class="notice"></p>
+        </div>
+
+        <div class="panel action-panel">
+          <h2>教練操作說明</h2>
+          <div class="instruction-list">
+            <p><strong>教練登入</strong><span>我是教練 Coach PIN</span></p>
+            <p><strong>查看名下學員</strong><span>教練成員</span></p>
+            <p><strong>調整學員目標</strong><span>教練設定 Amy 2000 120 60 250</span></p>
+            <p><strong>更新身體資料</strong><span>教練身體資料 Amy 女 28 165 58</span></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace tab-panel" id="adminPanel">
+        <div class="panel action-panel">
+          <h2>管理員流程</h2>
+          <label>
+            教練名稱
+            <input id="coachPinName" placeholder="例如 japser01" />
+          </label>
+          <div class="field-grid">
+            <label>
+              方案
+              <select id="coachPinDuration">
+                <option value="7天">7 天</option>
+                <option value="30天">30 天</option>
+                <option value="一年">一年</option>
+              </select>
+            </label>
+            <label>
+              學員名額
+              <input id="coachPinQuota" type="number" min="1" step="1" value="10" />
+            </label>
+          </div>
+          <button id="copyCoachCommand">產生 LINE 指令</button>
+          <p id="coachCommand" class="notice"></p>
+        </div>
+        <div class="panel action-panel">
+          <h2>權限分區</h2>
+          <div class="instruction-list">
+            <p><strong>學員區</strong><span>個人訂閱或跟隨教練的學員</span></p>
+            <p><strong>教練區</strong><span>只能管理自己名下的學員</span></p>
+            <p><strong>管理員區</strong><span>Jasper 可管理全部教練與學員</span></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="billingPanel">
+        <div class="billing-layout">
+          <div class="plan-card selected">
+            <span class="plan-icon">+</span>
+            <p>個人月費會員</p>
+            <strong>NT$60 / 月</strong>
+            <small>付款成功後自動開通 30 天學員權限</small>
+          </div>
+          <div class="plan-card">
+            <span class="plan-icon">C</span>
+            <p>教練月費方案</p>
+            <strong>NT$990 / 月</strong>
+            <small>付款成功後自動產生教練 PIN 與學員名額</small>
+          </div>
+          <div class="payment-panel">
+            <h2>付款資訊</h2>
+            <label>姓名<input placeholder="請輸入姓名" /></label>
+            <label>電話號碼<input placeholder="例：+886912345678" /></label>
+            <label>電子信箱<input placeholder="請輸入電子信箱" /></label>
+            <label>優惠碼<input placeholder="請輸入優惠碼" /></label>
+            <button type="button" disabled>付款功能待接金流</button>
+            <p class="notice">下一步可接 LINE Pay、綠界或藍新。接好金流 webhook 後，付款成功就能自動授權學員或產生教練 PIN。</p>
+          </div>
         </div>
       </section>
     </main>

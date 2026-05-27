@@ -23,6 +23,7 @@ import { analyzeFoodImage } from "./gemini.js";
 import {
   getBotInfo,
   getMessageContent,
+  replyMessages,
   replyText,
   showLoading,
   verifyLineSignature,
@@ -374,7 +375,11 @@ async function handleEvent(event: LineEvent): Promise<void> {
     await showLoading(lineUserId, 10);
     const text = event.message.text || "";
     const response = await handleTextMessage(lineUserId, text, sourceId);
-    await replyText(event.replyToken, response);
+    if (typeof response === "string") {
+      await replyText(event.replyToken, response);
+    } else {
+      await replyMessages(event.replyToken, Array.isArray(response) ? response : [response]);
+    }
     return;
   }
 

@@ -47,7 +47,8 @@ const els = {
   coachCommand: document.querySelector("#coachCommand"),
 };
 
-els.pin.value = localStorage.getItem("hermesAdminPin") || "";
+const initialParams = new URLSearchParams(window.location.search);
+els.pin.value = initialParams.get("pin") || localStorage.getItem("hermesAdminPin") || "";
 els.refresh.addEventListener("click", () => loadSummary().catch(showError));
 els.pin.addEventListener("keydown", (event) => {
   if (event.key === "Enter") loadSummary().catch(showError);
@@ -64,6 +65,10 @@ els.guideCards.forEach((card) =>
     navigator.clipboard?.writeText(card.dataset.template).catch(() => {});
   }),
 );
+
+if (initialParams.get("tab")) {
+  activateTab(initialParams.get("tab"));
+}
 
 loadSummary().catch(showError);
 

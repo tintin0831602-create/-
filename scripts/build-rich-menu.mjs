@@ -17,38 +17,38 @@ const asset = (name) => path.join(root, "public", "assets", name);
 
 const items = [
   {
-    title: "今日進度",
-    subtitle: "查看今天吃了多少",
+    title: "新手教學",
+    subtitle: "一步一步知道下一步",
     image: asset("feature-coach-dashboard.jpg"),
     color: "#0b7a53",
   },
   {
-    title: "剩餘熱量",
-    subtitle: "熱量與三大營養素",
-    image: asset("feature-food-photo.jpg"),
-    color: "#e0644b",
-  },
-  {
-    title: "記錄照片",
-    subtitle: "先點我，再傳餐點照",
+    title: "學員區",
+    subtitle: "記錄、今日、本週回顧",
     image: asset("feature-food-photo.jpg"),
     color: "#0aa567",
   },
   {
-    title: "記錄文字",
-    subtitle: "用一句話描述餐點",
-    image: asset("landing-hero-coach.jpg"),
+    title: "教練區",
+    subtitle: "登入後進管理台",
+    image: asset("feature-food-photo.jpg"),
     color: "#285c7f",
   },
   {
-    title: "我的設定",
-    subtitle: "目標、BMR、身體資料",
-    image: asset("feature-coach-dashboard.jpg"),
+    title: "管理員區",
+    subtitle: "產生 PIN 與權限管理",
+    image: asset("landing-hero-coach.jpg"),
     color: "#684cb1",
   },
   {
-    title: "使用幫助",
-    subtitle: "看完整指令教學",
+    title: "付款區",
+    subtitle: "訂閱與方案入口",
+    image: asset("feature-coach-dashboard.jpg"),
+    color: "#e0644b",
+  },
+  {
+    title: "今日進度",
+    subtitle: "查看今日與剩餘",
     image: asset("landing-hero-coach.jpg"),
     color: "#1f4d3b",
   },
@@ -169,7 +169,7 @@ fs.writeFileSync(
         <header>
           <div>
             <h1>Hermes 營養選單</h1>
-            <p>點一下，就能開始記錄與查看進度</p>
+            <p>分區入口、教學、付款與今日進度</p>
           </div>
         </header>
         <main>${cards}</main>

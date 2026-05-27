@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { config } from "./config.js";
+import type { LineReplyMessage } from "./types.js";
 
 type BotInfo = {
   userId?: string;
@@ -30,6 +31,10 @@ export function verifyLineSignature(rawBody: Buffer, signature: string | undefin
 }
 
 export async function replyText(replyToken: string, text: string): Promise<void> {
+  await replyMessages(replyToken, [{ type: "text", text: text.slice(0, 4900) }]);
+}
+
+export async function replyMessages(replyToken: string, messages: LineReplyMessage[]): Promise<void> {
   await lineFetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
     headers: {
@@ -37,7 +42,7 @@ export async function replyText(replyToken: string, text: string): Promise<void>
     },
     body: JSON.stringify({
       replyToken,
-      messages: [{ type: "text", text: text.slice(0, 4900) }],
+      messages,
     }),
   });
 }

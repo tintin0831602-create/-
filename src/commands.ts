@@ -43,19 +43,39 @@ import {
 } from "./messages.js";
 import { config } from "./config.js";
 import { todayInTimezone } from "./time.js";
-import type { FoodAnalysis, UserProfile } from "./types.js";
+import type { BotResponse, FoodAnalysis, FoodEntry, LineReplyMessage, UserProfile } from "./types.js";
 
 export async function handleTextMessage(
   lineUserId: string,
   text: string,
   sourceId: string,
-): Promise<string> {
+): Promise<BotResponse> {
   const normalized = normalizeCommand(text);
   const parts = normalized.split(/\s+/).filter(Boolean);
   const command = parts[0]?.toLowerCase();
 
-  if (!command || ["help", "幫助", "功能", "指令"].includes(command)) {
-    return helpMessage();
+  if (!command || ["help", "幫助", "功能", "指令", "選單", "主選單", "開始"].includes(command)) {
+    return lineMainMenuMessage();
+  }
+
+  if (["新手教學", "下一步"].includes(command)) {
+    return onboardingMenuMessage();
+  }
+
+  if (command === "學員區") {
+    return studentZoneMessage();
+  }
+
+  if (command === "付款區" || command === "付款" || command === "訂閱") {
+    return paymentZoneMessage();
+  }
+
+  if (command === "管理員區") {
+    return adminZoneMessage();
+  }
+
+  if (command === "付款說明") {
+    return "付款功能目前已做好 LINE 入口與付款頁骨架。下一步接 LINE Pay、綠界或藍新後，付款成功就會自動開通學員權限或產生教練 PIN。";
   }
 
   if (command === "教練幫助") {
@@ -71,6 +91,14 @@ export async function handleTextMessage(
   }
 
   const user = getUser(lineUserId);
+
+  if (command === "教練區") {
+    if (parts.length >= 3) {
+      return handleCoachZoneLogin(lineUserId, user, parts);
+    }
+    return coachZoneMessage();
+  }
+
   if (!user) {
     if (command === "我是學員") {
       return handleStudentIntro(lineUserId, parts);
@@ -104,6 +132,10 @@ export async function handleTextMessage(
 
   if (command === "教練登入") {
     return handleCoachLogin(user, parts);
+  }
+
+  if (command === "我是教練") {
+    return handleCoachIntro(lineUserId, parts);
   }
 
   if (command === "權限成員" || command === "授權" || command === "停用" || command === "產生教練pin") {
@@ -159,6 +191,10 @@ export async function handleTextMessage(
 
   if (["今日", "狀態", "分析今日飲食"].includes(command)) {
     return buildDailyReport(user);
+  }
+
+  if (["本週", "本週回顧", "週回顧", "這週"].includes(command)) {
+    return buildWeeklyLineReport(user);
   }
 
   if (["剩餘", "剩餘熱量", "提醒"].includes(command)) {
@@ -306,8 +342,32 @@ function handleCoachLogin(user: UserProfile, parts: string[]): string {
     `${user.display_name} 已綁定教練權限`,
     `教練名稱：${access.coach_name}`,
     `學員名額：${access.student_quota} 人`,
+    `管理台：${adminUrl(pin, "coach")}`,
     "可用：教練成員、教練授權 學員名 30天、教練設定 學員名 熱量 蛋白 脂肪 碳水",
   ].join("\n");
+}
+
+function handleCoachZoneLogin(
+  lineUserId: string,
+  user: UserProfile | undefined,
+  parts: string[],
+): BotResponse {
+  const pin = parts.at(-1)?.trim();
+  const displayName = parts.slice(1, -1).join(" ").trim();
+  if (!displayName || !pin) {
+    return coachZoneMessage();
+  }
+
+  const coachUser = user || createStarterUser(lineUserId, displayName, "student");
+  const access = claimCoachAccess(pin, coachUser.line_user_id);
+  if (!access) {
+    return "找不到這組教練 PIN，請確認是否輸入正確。";
+  }
+  if (!access.permanent_access && access.expires_at && access.expires_at <= Date.now()) {
+    return "這組教練 PIN 已到期，請聯絡 Jasper。";
+  }
+
+  return coachDashboardLinkMessage(access.coach_name, pin, access.student_quota);
 }
 
 function handleCoachCommand(user: UserProfile, text: string, parts: string[]): string {
@@ -519,6 +579,10 @@ function isPublicCommand(command: string | undefined, text: string): boolean {
       "指令",
       "教練幫助",
       "教練登入",
+      "教練區",
+      "我是學員",
+      "我是教練",
+      "付款說明",
       "最高權限幫助",
       "權限狀態",
       "我的設定",
@@ -569,6 +633,33 @@ export function buildRemainingReport(user: UserProfile): string {
   const date = todayInTimezone(config.timezone);
   const totals = getDailyTotals(user.line_user_id, date);
   return remainingReport(user, totals, date);
+}
+
+function buildWeeklyLineReport(user: UserProfile): string {
+  const today = todayInTimezone(config.timezone);
+  const dates = lastSevenDates(today);
+  const lines = dates.map((date) => {
+    const entries = getDailyEntries(user.line_user_id, date);
+    const totals = sumEntries(entries);
+    const surplus = Math.round(totals.calories - user.goal_calories);
+    const surplusText = surplus >= 0 ? `+${surplus}` : `${surplus}`;
+    return `${date.slice(5)}｜${Math.round(totals.calories)} kcal｜P${Math.round(totals.protein_g)} F${Math.round(totals.fat_g)} C${Math.round(totals.carbs_g)}｜${surplusText}`;
+  });
+  const weekEntries = dates.flatMap((date) => getDailyEntries(user.line_user_id, date));
+  const weekTotals = sumEntries(weekEntries);
+  const weekSurplus = Math.round(weekTotals.calories - user.goal_calories * dates.length);
+  return [
+    `${user.display_name} 本週回顧`,
+    `區間：${dates[0]} - ${dates[dates.length - 1]}`,
+    `總熱量：${Math.round(weekTotals.calories)} kcal`,
+    `本週盈虧：${weekSurplus >= 0 ? `盈餘 ${weekSurplus}` : `赤字 ${Math.abs(weekSurplus)}`} kcal`,
+    `三大營養素：P${Math.round(weekTotals.protein_g)} F${Math.round(weekTotals.fat_g)} C${Math.round(weekTotals.carbs_g)}`,
+    "",
+    ...lines,
+    "",
+    "要看圖表可進入管理台：",
+    adminUrl(undefined, "student"),
+  ].join("\n");
 }
 
 export function saveAnalysis(
@@ -646,18 +737,167 @@ function handleStudentIntro(lineUserId: string, parts: string[]): string {
   ].join("\n");
 }
 
-function handleCoachIntro(lineUserId: string, parts: string[]): string {
+function handleCoachIntro(lineUserId: string, parts: string[]): BotResponse {
   const pin = parts.at(-1)?.trim();
   const displayName = parts.slice(1, -1).join(" ").trim();
   if (!displayName || !pin) {
     return "教練請傳：我是教練 教練名稱 PIN\n例：我是教練 japser01 A1B2C3";
   }
-  createStarterUser(lineUserId, displayName, "student");
-  const user = getUser(lineUserId);
-  if (!user) {
-    return "建立教練資料時發生問題，請稍後再試一次。";
+  return handleCoachZoneLogin(lineUserId, getUser(lineUserId), ["教練區", displayName, pin]);
+}
+
+function lineMainMenuMessage(): LineReplyMessage {
+  return flexMenu("Hermes 主選單", "你現在要做什麼？", "在 LINE 裡就能選分區、看下一步、付款或進管理台。", [
+    messageButton("新手教學", "新手教學"),
+    messageButton("學員區", "學員區"),
+    messageButton("教練區", "教練區"),
+    messageButton("管理員區", "管理員區"),
+    uriButton("付款區", adminUrl(undefined, "billing")),
+  ]);
+}
+
+function onboardingMenuMessage(): LineReplyMessage {
+  return flexMenu("新手教學", "照這個順序走", "先確認身份，再設定目標，最後開始記錄飲食。", [
+    messageButton("我是學員", "我是學員 Amy"),
+    messageButton("我是教練", "教練區 Coach PIN"),
+    messageButton("設定目標", "設定目標 2000 120 60 250"),
+    messageButton("身體資料", "身體資料 男 30 175 70"),
+    messageButton("開始記錄", "紀錄下一張照片"),
+  ]);
+}
+
+function studentZoneMessage(): LineReplyMessage {
+  return flexMenu("學員區", "今天怎麼記錄？", "可以拍照、用文字、看今日進度，也能回顧本週。", [
+    messageButton("設定身份", "我是學員 Amy"),
+    messageButton("設定目標", "設定目標 2000 120 60 250"),
+    messageButton("記錄照片", "紀錄下一張照片"),
+    messageButton("今日進度", "今日"),
+    messageButton("本週回顧", "本週回顧"),
+    messageButton("刪除上一筆", "刪除最後一筆"),
+  ]);
+}
+
+function coachZoneMessage(): LineReplyMessage {
+  return flexMenu("教練區", "輸入姓名與 PIN", "拿到 Jasper 給你的 PIN 後，傳「教練區 教練名稱 PIN」，成功後會跳出管理台連結。", [
+    messageButton("登入格式", "教練區 Coach PIN"),
+    messageButton("查看學員", "教練成員"),
+    messageButton("授權學員", "教練授權 Amy 30天"),
+    messageButton("調整目標", "教練設定 Amy 2000 120 60 250"),
+    uriButton("教練管理台", adminUrl(undefined, "coach")),
+  ]);
+}
+
+function adminZoneMessage(): LineReplyMessage {
+  return flexMenu("管理員區", "Jasper 最高權限", "產生教練 PIN、查看權限成員、進入管理台。", [
+    messageButton("最高權限設定", "設為最高權限 管理PIN"),
+    messageButton("產生教練 PIN", "產生教練PIN Coach 30天 20人"),
+    messageButton("查看成員", "權限成員"),
+    uriButton("管理台", adminUrl(undefined, "admin")),
+  ]);
+}
+
+function paymentZoneMessage(): LineReplyMessage {
+  return flexMenu("付款區", "選擇方案", "目前先進入付款頁面；接上金流後，付款成功會自動開通學員權限或產生教練 PIN。", [
+    uriButton("個人月費", adminUrl(undefined, "billing")),
+    uriButton("教練方案", adminUrl(undefined, "billing")),
+    messageButton("付款說明", "付款說明"),
+  ]);
+}
+
+function coachDashboardLinkMessage(coachName: string, pin: string, quota: number): LineReplyMessage[] {
+  return [
+    {
+      type: "text",
+      text: [`${coachName} 教練登入成功`, `學員名額：${quota} 人`, "請點下方按鈕進入教練管理台。"].join("\n"),
+    },
+    flexMenu("教練管理台", `你好！${coachName} 教練`, "已自動帶入 PIN，進去後可查看學員、授權與調整數值。", [
+      uriButton("進入教練管理台", adminUrl(pin, "coach")),
+      messageButton("查看學員", "教練成員"),
+      messageButton("授權學員", "教練授權 Amy 30天"),
+    ]),
+  ];
+}
+
+function flexMenu(
+  altText: string,
+  title: string,
+  description: string,
+  buttons: Array<{ type: "button"; style?: string; action: Record<string, string> }>,
+): LineReplyMessage {
+  return {
+    type: "flex",
+    altText,
+    contents: {
+      type: "bubble",
+      size: "mega",
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          { type: "text", text: "Hermes Nutrition", size: "sm", color: "#0c5c46", weight: "bold" },
+          { type: "text", text: title, size: "xl", weight: "bold", wrap: true, color: "#1d252b" },
+          { type: "text", text: description, size: "sm", wrap: true, color: "#66727d" },
+        ],
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        spacing: "sm",
+        contents: buttons,
+      },
+    },
+  };
+}
+
+function messageButton(label: string, text: string) {
+  return {
+    type: "button" as const,
+    style: "primary",
+    color: "#06a66a",
+    action: { type: "message", label, text },
+  };
+}
+
+function uriButton(label: string, uri: string) {
+  return {
+    type: "button" as const,
+    style: "secondary",
+    action: { type: "uri", label, uri },
+  };
+}
+
+function adminUrl(pin?: string, tab?: "student" | "coach" | "admin" | "billing"): string {
+  const base = (config.baseUrl || "https://nutritionay1.onrender.com").replace(/\/+$/, "");
+  const params = new URLSearchParams();
+  if (pin) params.set("pin", pin);
+  if (tab) params.set("tab", tab);
+  const query = params.toString();
+  return `${base}/admin/${query ? `?${query}` : ""}`;
+}
+
+function lastSevenDates(today: string): string[] {
+  const dates: string[] = [];
+  const [year, month, day] = today.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  for (let offset = 6; offset >= 0; offset -= 1) {
+    const next = new Date(date);
+    next.setUTCDate(date.getUTCDate() - offset);
+    dates.push(next.toISOString().slice(0, 10));
   }
-  return handleCoachLogin(user, ["教練登入", pin]);
+  return dates;
+}
+
+function sumEntries(entries: FoodEntry[]) {
+  return entries.reduce(
+    (total, entry) => ({
+      calories: total.calories + entry.calories,
+      protein_g: total.protein_g + entry.protein_g,
+      fat_g: total.fat_g + entry.fat_g,
+      carbs_g: total.carbs_g + entry.carbs_g,
+    }),
+    { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0 },
+  );
 }
 
 function createStarterUser(

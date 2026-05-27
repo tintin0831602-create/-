@@ -20,12 +20,12 @@ const richMenu = {
   name: "Hermes nutrition main menu",
   chatBarText: "選單",
   areas: [
-    textArea(0, 198, 833, 744, "今日"),
-    textArea(833, 198, 834, 744, "剩餘"),
-    textArea(1667, 198, 833, 744, "紀錄下一張照片"),
-    textArea(0, 942, 833, 744, "紀錄文字 "),
-    textArea(833, 942, 834, 744, "我的設定"),
-    textArea(1667, 942, 833, 744, "幫助"),
+    textArea(0, 198, 833, 744, "新手教學"),
+    textArea(833, 198, 834, 744, "學員區"),
+    textArea(1667, 198, 833, 744, "教練區"),
+    textArea(0, 942, 833, 744, "管理員區"),
+    textArea(833, 942, 834, 744, "付款區"),
+    textArea(1667, 942, 833, 744, "今日"),
   ],
 };
 

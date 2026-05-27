@@ -60,6 +60,13 @@ export type FoodAnalysis = {
   confidence: number;
 };
 
+export type LineReplyMessage = {
+  type: string;
+  [key: string]: unknown;
+};
+
+export type BotResponse = string | LineReplyMessage | LineReplyMessage[];
+
 export type LineWebhookBody = {
   destination: string;
   events: LineEvent[];

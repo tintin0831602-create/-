@@ -78,8 +78,14 @@ export async function handleTextMessage(
   }
 
   if (command === "設為最高權限") {
+    const providedPin = parts[1]?.trim();
+    if (config.adminPin && providedPin === config.adminPin) {
+      const owner = setOwner(lineUserId);
+      return `${owner.display_name} 已用管理 PIN 設為最高權限，可以使用：最高權限幫助`;
+    }
+
     if (countOwners() > 0) {
-      return "目前已經有最高權限帳號。";
+      return "目前已經有最高權限帳號。如需把自己設為最高權限，請傳：設為最高權限 管理PIN";
     }
     if (user.display_name.toLowerCase() !== config.ownerDisplayName.toLowerCase()) {
       return `只有名稱為 ${config.ownerDisplayName} 的主帳號可以初始化最高權限。`;

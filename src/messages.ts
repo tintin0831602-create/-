@@ -57,6 +57,7 @@ export function coachHelpMessage(): string {
 export function ownerHelpMessage(): string {
   return [
     "最高權限功能",
+    "設為最高權限 管理PIN",
     "權限成員",
     "產生教練PIN Coach 30天 20人",
     "產生教練PIN Coach 一年 50人",

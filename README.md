@@ -64,7 +64,7 @@ Render 會使用：
 Build Command: npm install && npm run build
 Start Command: npm start
 Health Check: /health
-Database: /var/data/hermes.sqlite
+Database: /tmp/hermes.sqlite for free testing, /var/data/hermes.sqlite with paid persistent disk
 ```
 
 詳細步驟見 `docs/RENDER_DEPLOY.md`。

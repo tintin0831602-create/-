@@ -40,21 +40,27 @@ ADMIN_PIN=你的後台登入 PIN
 NODE_ENV=production
 NODE_VERSION=22
 TIMEZONE=Asia/Taipei
-DATABASE_PATH=/var/data/hermes.sqlite
+DATABASE_PATH=/tmp/hermes.sqlite
 OWNER_DISPLAY_NAME=Jasper
 GEMINI_MODEL=gemini-3.5-flash
 ```
 
-## 4. Persistent Disk
+## 4. 資料庫位置
 
-`render.yaml` 已經設定：
+免費測試時可先使用：
+
+```text
+DATABASE_PATH=/tmp/hermes.sqlite
+```
+
+這可以讓服務先成功跑起來，但免費方案重新部署或休眠後，資料可能會消失。
+
+正式營運時建議升級 Render 付費方案並加 Persistent Disk：
 
 ```text
 mountPath=/var/data
-sizeGB=1
+DATABASE_PATH=/var/data/hermes.sqlite
 ```
-
-這會讓 SQLite 資料庫保留在雲端，不會每次部署就消失。
 
 ## 5. LINE Webhook
 

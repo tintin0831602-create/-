@@ -9,6 +9,7 @@ import {
   createImageRecordingIntent,
   createCoachAccess,
   deleteLatestEntry,
+  findCoachAccessByName,
   findUserByDisplayName,
   grantAccess,
   getDailyEntries,
@@ -18,6 +19,7 @@ import {
   resetUser,
   setCoach,
   setOwner,
+  syncClaimedCoachAccess,
   updateUserBodyStats,
   updateUserGoals,
   upsertUser,
@@ -70,6 +72,12 @@ export async function handleTextMessage(
 
   const user = getUser(lineUserId);
   if (!user) {
+    if (command === "我是學員") {
+      return handleStudentIntro(lineUserId, parts);
+    }
+    if (command === "我是教練") {
+      return handleCoachIntro(lineUserId, parts);
+    }
     return registrationMessage();
   }
 
@@ -127,6 +135,10 @@ export async function handleTextMessage(
 
   if (command === "我的設定" || command === "設定查詢") {
     return userSettingsMessage(user);
+  }
+
+  if (command === "設定目標") {
+    return handleSetGoals(user, parts);
   }
 
   if (command === "身體資料" || command === "身體數據" || command === "bmr") {
@@ -213,21 +225,28 @@ function handleOwnerCommand(user: UserProfile, text: string): string {
   const coachPinMatch = text.match(/^產生教練PIN\s+(.+?)\s+(7天|30天|一年|1年|365天)\s+(\d+)人$/iu);
   if (coachPinMatch) {
     const [, coachName, duration, quotaText] = coachPinMatch;
-    const pin = generatePin();
+    const existingAccess = findCoachAccessByName(coachName.trim());
+    const pin = existingAccess?.pin || generatePin();
     const days = subscriptionDays(duration) || 7;
+    const extensionBase =
+      existingAccess?.expires_at && existingAccess.expires_at > Date.now()
+        ? existingAccess.expires_at
+        : Date.now();
     const access = createCoachAccess({
       pin,
       coachName: coachName.trim(),
-      expiresAt: Date.now() + days * 24 * 60 * 60 * 1000,
+      expiresAt: extensionBase + days * 24 * 60 * 60 * 1000,
       permanentAccess: false,
       studentQuota: Number(quotaText),
       createdByLineUserId: user.line_user_id,
     });
+    syncClaimedCoachAccess(access);
     return [
-      "已產生教練 PIN",
+      existingAccess ? "已續約教練 PIN" : "已產生教練 PIN",
       `教練：${access.coach_name}`,
       `PIN：${access.pin}`,
       `期限：${duration}`,
+      `到期：${formatDate(access.expires_at)}`,
       `學員名額：${access.student_quota} 人`,
       "",
       "教練可用這組 PIN 登入管理台，也可以在 LINE 傳：",
@@ -452,6 +471,11 @@ function formatMemberLine(user: UserProfile): string {
   return `${user.display_name}${coach}: ${Math.round(user.goal_calories)} kcal / P${Math.round(user.goal_protein_g)} F${Math.round(user.goal_fat_g)} C${Math.round(user.goal_carbs_g)}${quota}`;
 }
 
+function formatDate(timestamp: number | null): string {
+  if (!timestamp) return "永久";
+  return new Date(timestamp).toLocaleDateString("zh-TW", { timeZone: config.timezone });
+}
+
 function generatePin(): string {
   return crypto.randomBytes(3).toString("hex").toUpperCase();
 }
@@ -502,6 +526,7 @@ function isPublicCommand(command: string | undefined, text: string): boolean {
       "身體資料",
       "身體數據",
       "bmr",
+      "設定目標",
       "重設設定",
       "確認重設設定",
     ].includes(command || "") || text.startsWith("設定 ")
@@ -603,6 +628,78 @@ function handleSetUser(lineUserId: string, parts: string[]): string {
 
   upsertUser(user);
   return registeredMessage(user);
+}
+
+function handleStudentIntro(lineUserId: string, parts: string[]): string {
+  const displayName = parts.slice(1).join(" ").trim();
+  if (!displayName) {
+    return "請告訴我你的名稱，例如：我是學員 Amy";
+  }
+  const user = createStarterUser(lineUserId, displayName, "student");
+  return [
+    `你好，${user.display_name}，已先建立學員身份。`,
+    "下一步請設定你的每日目標：",
+    "設定目標 熱量 蛋白 脂肪 碳水",
+    "例：設定目標 2000 120 60 250",
+    "",
+    "如果你是教練的學員，請請教練用：教練授權 你的名稱 7天/30天/一年",
+  ].join("\n");
+}
+
+function handleCoachIntro(lineUserId: string, parts: string[]): string {
+  const pin = parts.at(-1)?.trim();
+  const displayName = parts.slice(1, -1).join(" ").trim();
+  if (!displayName || !pin) {
+    return "教練請傳：我是教練 教練名稱 PIN\n例：我是教練 japser01 A1B2C3";
+  }
+  createStarterUser(lineUserId, displayName, "student");
+  const user = getUser(lineUserId);
+  if (!user) {
+    return "建立教練資料時發生問題，請稍後再試一次。";
+  }
+  return handleCoachLogin(user, ["教練登入", pin]);
+}
+
+function createStarterUser(
+  lineUserId: string,
+  displayName: string,
+  role: "student" | "owner",
+): UserProfile {
+  const shouldBecomeOwner =
+    role === "owner" ||
+    (countOwners() === 0 && displayName.toLowerCase() === config.ownerDisplayName.toLowerCase());
+  const user: UserProfile = {
+    line_user_id: lineUserId,
+    display_name: displayName,
+    goal_calories: 2000,
+    goal_protein_g: 120,
+    goal_fat_g: 60,
+    goal_carbs_g: 250,
+    role: shouldBecomeOwner ? "owner" : "student",
+    access_expires_at: shouldBecomeOwner ? null : Date.now() + 7 * 24 * 60 * 60 * 1000,
+    permanent_access: shouldBecomeOwner ? 1 : 0,
+    is_coach: shouldBecomeOwner ? 1 : 0,
+  };
+  upsertUser(user);
+  return getUser(lineUserId) as UserProfile;
+}
+
+function handleSetGoals(user: UserProfile, parts: string[]): string {
+  if (parts.length !== 5) {
+    return "格式：設定目標 熱量 蛋白 脂肪 碳水\n例：設定目標 2000 120 60 250";
+  }
+  const [, calories, protein, fat, carbs] = parts;
+  const numbers = [calories, protein, fat, carbs].map(Number);
+  if (numbers.some((value) => !Number.isFinite(value) || value <= 0)) {
+    return "熱量與三大營養素都要是大於 0 的數字。";
+  }
+  const updated = updateUserGoals(user.line_user_id, {
+    goal_calories: numbers[0],
+    goal_protein_g: numbers[1],
+    goal_fat_g: numbers[2],
+    goal_carbs_g: numbers[3],
+  });
+  return registeredMessage(updated);
 }
 
 function handleManualEntry(user: UserProfile, text: string): string {

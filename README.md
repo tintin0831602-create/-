@@ -71,7 +71,20 @@ Database: /tmp/hermes.sqlite for free testing, /var/data/hermes.sqlite with paid
 
 ## LINE 使用方式
 
-第一次使用，兩位成員各自在 LINE 傳：
+第一次使用，可先用對話式身份設定：
+
+```text
+我是學員 Amy
+設定目標 2000 120 60 250
+```
+
+教練拿到 PIN 後可傳：
+
+```text
+我是教練 Coach PIN
+```
+
+也可以一次完成設定，兩位成員各自在 LINE 傳：
 
 ```text
 設定 Jasper 2200 150 70 250
@@ -156,6 +169,7 @@ BMR 男 30 175 70
 最高權限幫助
 設為最高權限 管理PIN
 權限成員
+產生教練PIN Coach 30天 20人
 授權 學員 Amy 7天
 授權 學員 Amy 30天
 授權 學員 Amy 一年
@@ -164,6 +178,8 @@ BMR 男 30 175 70
 授權 永久 Amy
 停用 Amy
 ```
+
+同一位教練再次使用 `產生教練PIN Coach 30天 20人` 時，會沿用原本 PIN 並延長期限，不會換一組新代碼。
 
 教練拿到權限後，可以在自己的名額內授權學員：
 

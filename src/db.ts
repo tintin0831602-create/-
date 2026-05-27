@@ -295,6 +295,12 @@ export function getCoachAccessByPin(pin: string): CoachAccess | undefined {
   return db.prepare("SELECT * FROM coach_access WHERE pin = ?").get(pin) as CoachAccess | undefined;
 }
 
+export function findCoachAccessByName(coachName: string): CoachAccess | undefined {
+  return db
+    .prepare("SELECT * FROM coach_access WHERE coach_name = ? COLLATE NOCASE ORDER BY created_at ASC LIMIT 1")
+    .get(coachName) as CoachAccess | undefined;
+}
+
 export function claimCoachAccess(pin: string, lineUserId: string): CoachAccess | undefined {
   const access = getCoachAccessByPin(pin);
   if (!access) {
@@ -321,6 +327,27 @@ export function claimCoachAccess(pin: string, lineUserId: string): CoachAccess |
     student_quota: access.student_quota,
   });
   return getCoachAccessByPin(pin);
+}
+
+export function syncClaimedCoachAccess(access: CoachAccess): void {
+  if (!access.claimed_line_user_id) {
+    return;
+  }
+  db.prepare(`
+    UPDATE users SET
+      role = 'coach',
+      is_coach = 1,
+      permanent_access = @permanent_access,
+      access_expires_at = @access_expires_at,
+      student_quota = @student_quota,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE line_user_id = @line_user_id
+  `).run({
+    line_user_id: access.claimed_line_user_id,
+    permanent_access: access.permanent_access,
+    access_expires_at: access.expires_at,
+    student_quota: access.student_quota,
+  });
 }
 
 export function coachKeyForPin(pin: string): string {

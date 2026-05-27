@@ -66,12 +66,52 @@ export async function handleTextMessage(
     return studentZoneMessage();
   }
 
+  if (command === "學員身份") {
+    return studentIdentityPrompt();
+  }
+
+  if (command === "目標設定") {
+    return goalSetupPrompt();
+  }
+
+  if (command === "身體資料教學") {
+    return bodyStatsPrompt();
+  }
+
+  if (command === "開始記錄") {
+    return recordingPrompt();
+  }
+
+  if (command === "文字記錄教學") {
+    return "請輸入：\n紀錄文字 你的餐點內容\n\n例：紀錄文字 早餐吃兩顆蛋、一杯豆漿和一顆饅頭";
+  }
+
+  if (command === "手動數字教學") {
+    return "請輸入：\n紀錄 食物 熱量 蛋白 脂肪 碳水\n\n例：紀錄 雞胸飯 650 45 15 80";
+  }
+
   if (command === "付款區" || command === "付款" || command === "訂閱") {
     return paymentZoneMessage();
   }
 
   if (command === "管理員區") {
     return adminZoneMessage();
+  }
+
+  if (command === "最高權限設定教學") {
+    return "請在私訊中輸入：\n設為最高權限 你的管理PIN\n\n成功後可使用：管理員區、產生教練 PIN、權限成員。";
+  }
+
+  if (command === "產生教練pin教學") {
+    return "請輸入：\n產生教練PIN 教練名稱 30天 20人\n\n例：教練名稱請換成真實教練名稱；同一位教練再次產生會沿用原 PIN 並延長期限。";
+  }
+
+  if (command === "教練授權教學") {
+    return "請輸入：\n教練授權 學員姓名 30天\n\n提醒：學員要先在 LINE 傳「我是學員 姓名」建立資料，教練才找得到。";
+  }
+
+  if (command === "教練設定教學") {
+    return "請輸入：\n教練設定 學員姓名 熱量 蛋白 脂肪 碳水\n\n例：教練設定 Amy 2000 120 60 250";
   }
 
   if (command === "付款說明") {
@@ -107,6 +147,22 @@ export async function handleTextMessage(
       return handleCoachIntro(lineUserId, parts);
     }
     return registrationMessage();
+  }
+
+  if (command === "我是學員") {
+    if (parts.length === 1) {
+      return [
+        `你目前已建立為：${user.display_name}`,
+        "下一步可以設定每日目標：",
+        "設定目標 熱量 蛋白 脂肪 碳水",
+        "例：設定目標 2000 120 60 250",
+      ].join("\n");
+    }
+    return [
+      `你目前已建立為：${user.display_name}`,
+      "如果要更改名稱與目標，請用完整設定格式：",
+      "設定 姓名 熱量 蛋白 脂肪 碳水",
+    ].join("\n");
   }
 
   if (command === "權限狀態") {
@@ -583,6 +639,16 @@ function isPublicCommand(command: string | undefined, text: string): boolean {
       "我是學員",
       "我是教練",
       "付款說明",
+      "學員身份",
+      "目標設定",
+      "身體資料教學",
+      "開始記錄",
+      "最高權限設定教學",
+      "產生教練pin教學",
+      "教練授權教學",
+      "教練設定教學",
+      "文字記錄教學",
+      "手動數字教學",
       "最高權限幫助",
       "權限狀態",
       "我的設定",
@@ -724,7 +790,7 @@ function handleSetUser(lineUserId: string, parts: string[]): string {
 function handleStudentIntro(lineUserId: string, parts: string[]): string {
   const displayName = parts.slice(1).join(" ").trim();
   if (!displayName) {
-    return "請告訴我你的名稱，例如：我是學員 Amy";
+    return studentIdentityPrompt();
   }
   const user = createStarterUser(lineUserId, displayName, "student");
   return [
@@ -741,7 +807,7 @@ function handleCoachIntro(lineUserId: string, parts: string[]): BotResponse {
   const pin = parts.at(-1)?.trim();
   const displayName = parts.slice(1, -1).join(" ").trim();
   if (!displayName || !pin) {
-    return "教練請傳：我是教練 教練名稱 PIN\n例：我是教練 japser01 A1B2C3";
+    return coachLoginPrompt();
   }
   return handleCoachZoneLogin(lineUserId, getUser(lineUserId), ["教練區", displayName, pin]);
 }
@@ -758,19 +824,19 @@ function lineMainMenuMessage(): LineReplyMessage {
 
 function onboardingMenuMessage(): LineReplyMessage {
   return flexMenu("新手教學", "照這個順序走", "先確認身份，再設定目標，最後開始記錄飲食。", [
-    messageButton("我是學員", "我是學員 Amy"),
-    messageButton("我是教練", "教練區 Coach PIN"),
-    messageButton("設定目標", "設定目標 2000 120 60 250"),
-    messageButton("身體資料", "身體資料 男 30 175 70"),
-    messageButton("開始記錄", "紀錄下一張照片"),
+    messageButton("我是學員", "學員身份"),
+    messageButton("我是教練", "教練區"),
+    messageButton("設定目標", "目標設定"),
+    messageButton("身體資料", "身體資料教學"),
+    messageButton("開始記錄", "開始記錄"),
   ]);
 }
 
 function studentZoneMessage(): LineReplyMessage {
   return flexMenu("學員區", "今天怎麼記錄？", "可以拍照、用文字、看今日進度，也能回顧本週。", [
-    messageButton("設定身份", "我是學員 Amy"),
-    messageButton("設定目標", "設定目標 2000 120 60 250"),
-    messageButton("記錄照片", "紀錄下一張照片"),
+    messageButton("設定身份", "學員身份"),
+    messageButton("設定目標", "目標設定"),
+    messageButton("記錄照片", "開始記錄"),
     messageButton("今日進度", "今日"),
     messageButton("本週回顧", "本週回顧"),
     messageButton("刪除上一筆", "刪除最後一筆"),
@@ -779,18 +845,18 @@ function studentZoneMessage(): LineReplyMessage {
 
 function coachZoneMessage(): LineReplyMessage {
   return flexMenu("教練區", "輸入姓名與 PIN", "拿到 Jasper 給你的 PIN 後，傳「教練區 教練名稱 PIN」，成功後會跳出管理台連結。", [
-    messageButton("登入格式", "教練區 Coach PIN"),
+    messageButton("登入教學", "教練區"),
     messageButton("查看學員", "教練成員"),
-    messageButton("授權學員", "教練授權 Amy 30天"),
-    messageButton("調整目標", "教練設定 Amy 2000 120 60 250"),
+    messageButton("授權學員", "教練授權教學"),
+    messageButton("調整目標", "教練設定教學"),
     uriButton("教練管理台", adminUrl(undefined, "coach")),
   ]);
 }
 
 function adminZoneMessage(): LineReplyMessage {
   return flexMenu("管理員區", "Jasper 最高權限", "產生教練 PIN、查看權限成員、進入管理台。", [
-    messageButton("最高權限設定", "設為最高權限 管理PIN"),
-    messageButton("產生教練 PIN", "產生教練PIN Coach 30天 20人"),
+    messageButton("最高權限設定", "最高權限設定教學"),
+    messageButton("產生教練 PIN", "產生教練PIN教學"),
     messageButton("查看成員", "權限成員"),
     uriButton("管理台", adminUrl(undefined, "admin")),
   ]);
@@ -813,9 +879,57 @@ function coachDashboardLinkMessage(coachName: string, pin: string, quota: number
     flexMenu("教練管理台", `你好！${coachName} 教練`, "已自動帶入 PIN，進去後可查看學員、授權與調整數值。", [
       uriButton("進入教練管理台", adminUrl(pin, "coach")),
       messageButton("查看學員", "教練成員"),
-      messageButton("授權學員", "教練授權 Amy 30天"),
+      messageButton("授權學員", "教練授權教學"),
     ]),
   ];
+}
+
+function studentIdentityPrompt(): string {
+  return [
+    "請輸入你的學員姓名：",
+    "我是學員 你的名字",
+    "",
+    "例：我是學員 小御",
+    "建立完成後，我會引導你設定每日熱量與三大營養素。",
+  ].join("\n");
+}
+
+function coachLoginPrompt(): string {
+  return [
+    "請輸入教練名稱與 PIN：",
+    "教練區 教練名稱 PIN",
+    "",
+    "例：教練區 jasper教練 A1B2C3",
+    "登入成功後，我會給你可點擊的教練管理台連結。",
+  ].join("\n");
+}
+
+function goalSetupPrompt(): string {
+  return [
+    "請輸入每日目標：",
+    "設定目標 熱量 蛋白 脂肪 碳水",
+    "",
+    "例：設定目標 2000 120 60 250",
+    "如果不知道怎麼抓，可以先填大概值，之後教練可幫你調整。",
+  ].join("\n");
+}
+
+function bodyStatsPrompt(): string {
+  return [
+    "請輸入身體資料，讓我估算 BMR：",
+    "身體資料 男/女 年齡 身高cm 體重kg",
+    "",
+    "例：身體資料 男 30 175 70",
+  ].join("\n");
+}
+
+function recordingPrompt(): LineReplyMessage {
+  return flexMenu("開始記錄", "你想怎麼記錄這一餐？", "照片最直覺；文字適合早餐、外食或沒有拍照的情境。", [
+    messageButton("記錄照片", "紀錄下一張照片"),
+    messageButton("文字記錄教學", "文字記錄教學"),
+    messageButton("手動數字教學", "手動數字教學"),
+    messageButton("看今日", "今日"),
+  ]);
 }
 
 function flexMenu(

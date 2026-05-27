@@ -38,6 +38,7 @@ ADMIN_PIN=你的後台登入 PIN
 
 ```text
 NODE_ENV=production
+NODE_VERSION=22
 TIMEZONE=Asia/Taipei
 DATABASE_PATH=/var/data/hermes.sqlite
 OWNER_DISPLAY_NAME=Jasper

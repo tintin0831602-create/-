@@ -818,7 +818,7 @@ function lineMainMenuMessage(): LineReplyMessage {
     messageButton("學員區", "學員區"),
     messageButton("教練區", "教練區"),
     messageButton("管理員區", "管理員區"),
-    uriButton("付款區", adminUrl(undefined, "billing")),
+    uriButton("付款區", checkoutUrl()),
   ]);
 }
 
@@ -863,9 +863,11 @@ function adminZoneMessage(): LineReplyMessage {
 }
 
 function paymentZoneMessage(): LineReplyMessage {
-  return flexMenu("付款區", "選擇方案", "目前先進入付款頁面；接上金流後，付款成功會自動開通學員權限或產生教練 PIN。", [
-    uriButton("個人月費", adminUrl(undefined, "billing")),
-    uriButton("教練方案", adminUrl(undefined, "billing")),
+  return flexMenu("付款區", "選擇方案", "先用 LINE 授權確認身份，再進入付款頁。測試付款完成後會自動開通學員或產生教練 PIN。", [
+    uriButton("個人月費", checkoutUrl("student_month")),
+    uriButton("個人一年", checkoutUrl("student_year")),
+    uriButton("教練月費", checkoutUrl("coach_month")),
+    uriButton("教練一年", checkoutUrl("coach_year")),
     messageButton("付款說明", "付款說明"),
   ]);
 }
@@ -988,6 +990,14 @@ function adminUrl(pin?: string, tab?: "student" | "coach" | "admin" | "billing")
   if (tab) params.set("tab", tab);
   const query = params.toString();
   return `${base}/admin/${query ? `?${query}` : ""}`;
+}
+
+function checkoutUrl(plan?: "student_month" | "student_year" | "coach_month" | "coach_year"): string {
+  const base = (config.baseUrl || "https://nutritionay1.onrender.com").replace(/\/+$/, "");
+  const params = new URLSearchParams();
+  if (plan) params.set("plan", plan);
+  const query = params.toString();
+  return `${base}/checkout/${query ? `?${query}` : ""}`;
 }
 
 function lastSevenDates(today: string): string[] {

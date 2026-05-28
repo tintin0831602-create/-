@@ -26,6 +26,39 @@ export type UserProfile = {
 
 export type AccessRole = "owner" | "coach" | "student";
 
+export type CheckoutPlanId = "student_month" | "student_year" | "coach_month" | "coach_year";
+
+export type CheckoutSession = {
+  id: string;
+  state: string;
+  plan_id: CheckoutPlanId;
+  role: "student" | "coach";
+  coach_name: string | null;
+  line_user_id: string | null;
+  display_name: string | null;
+  status: "pending" | "authorized" | "paid" | "cancelled";
+  expires_at: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PaymentRecord = {
+  id: string;
+  checkout_session_id: string;
+  line_user_id: string;
+  plan_id: CheckoutPlanId;
+  role: "student" | "coach";
+  amount_twd: number;
+  status: "test_paid" | "paid" | "failed";
+  provider: "test" | "line_pay";
+  provider_transaction_id: string | null;
+  payer_name: string;
+  payer_phone: string;
+  payer_email: string;
+  result_pin: string | null;
+  created_at: string;
+};
+
 export type FoodEntry = {
   id: number;
   line_user_id: string;

@@ -527,6 +527,18 @@ label {
   gap: 14px;
 }
 
+.pay-link {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .empty {
   display: grid;
   gap: 8px;

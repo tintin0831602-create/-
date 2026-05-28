@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hermes 付款與授權</title>
+    <link rel="stylesheet" href="/checkout/styles.css" />
+  </head>
+  <body>
+    <main class="checkout-shell">
+      <header class="checkout-head">
+        <a class="back-link" href="/">←</a>
+        <div>
+          <p>Hermes Nutrition</p>
+          <h1>訂閱與開通</h1>
+        </div>
+      </header>
+
+      <section class="status-card" id="authStatus">
+        <span class="status-dot"></span>
+        <div>
+          <strong>LINE 授權</strong>
+          <p>請先用 LINE Login 確認身份，付款成功後才知道要開通哪一個 LINE 帳號。</p>
+        </div>
+      </section>
+
+      <section class="plans" id="plans" aria-label="方案選擇"></section>
+
+      <section class="card coach-card" id="coachNameCard" hidden>
+        <label>
+          教練名稱
+          <input id="coachName" placeholder="例如 Jasper 教練" autocomplete="name" />
+        </label>
+        <small>同一位教練續約時會沿用同一組 PIN。</small>
+      </section>
+
+      <section class="card coupon-card">
+        <h2>優惠碼</h2>
+        <div class="inline-field">
+          <input id="coupon" placeholder="請輸入優惠碼" />
+          <button id="applyCoupon" type="button">套用</button>
+        </div>
+      </section>
+
+      <section class="card payer-card">
+        <h2>付款人資訊</h2>
+        <label>
+          姓名
+          <input id="payerName" placeholder="請輸入姓名" autocomplete="name" />
+        </label>
+        <label>
+          電話號碼
+          <input id="payerPhone" placeholder="例：+886912345678" autocomplete="tel" />
+        </label>
+        <label>
+          電子信箱
+          <input id="payerEmail" placeholder="請輸入電子信箱" autocomplete="email" />
+        </label>
+      </section>
+
+      <section class="result-card" id="result" hidden></section>
+
+      <footer class="checkout-actions">
+        <button id="authorize" type="button">LINE 授權</button>
+        <button id="pay" type="button" disabled>測試付款並開通</button>
+      </footer>
+    </main>
+    <script src="/checkout/app.js" type="module"></script>
+  </body>
+</html>

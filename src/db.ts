@@ -2,7 +2,15 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
-import type { AccessRole, FoodEntry, MacroTotals, UserProfile } from "./types.js";
+import type {
+  AccessRole,
+  CheckoutPlanId,
+  CheckoutSession,
+  FoodEntry,
+  MacroTotals,
+  PaymentRecord,
+  UserProfile,
+} from "./types.js";
 
 fs.mkdirSync(path.dirname(config.databasePath), { recursive: true });
 
@@ -57,6 +65,37 @@ db.exec(`
     student_quota INTEGER NOT NULL DEFAULT 0,
     claimed_line_user_id TEXT,
     created_by_line_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS checkout_sessions (
+    id TEXT PRIMARY KEY,
+    state TEXT NOT NULL UNIQUE,
+    plan_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    coach_name TEXT,
+    line_user_id TEXT,
+    display_name TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    expires_at INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS payments (
+    id TEXT PRIMARY KEY,
+    checkout_session_id TEXT NOT NULL,
+    line_user_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    amount_twd INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_transaction_id TEXT,
+    payer_name TEXT NOT NULL,
+    payer_phone TEXT NOT NULL,
+    payer_email TEXT NOT NULL,
+    result_pin TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
@@ -491,4 +530,104 @@ export function consumeImageRecordingIntent(
 
 export function clearExpiredImageRecordingIntents(now: number): void {
   db.prepare("DELETE FROM image_recording_intents WHERE expires_at < ?").run(now);
+}
+
+export function createCheckoutSession(input: {
+  id: string;
+  state: string;
+  planId: CheckoutPlanId;
+  role: "student" | "coach";
+  coachName?: string | null;
+  expiresAt: number;
+}): CheckoutSession {
+  db.prepare(`
+    INSERT INTO checkout_sessions (id, state, plan_id, role, coach_name, expires_at)
+    VALUES (@id, @state, @plan_id, @role, @coach_name, @expires_at)
+  `).run({
+    id: input.id,
+    state: input.state,
+    plan_id: input.planId,
+    role: input.role,
+    coach_name: input.coachName || null,
+    expires_at: input.expiresAt,
+  });
+  return getCheckoutSession(input.id) as CheckoutSession;
+}
+
+export function getCheckoutSession(id: string): CheckoutSession | undefined {
+  return db.prepare("SELECT * FROM checkout_sessions WHERE id = ?").get(id) as CheckoutSession | undefined;
+}
+
+export function getCheckoutSessionByState(state: string): CheckoutSession | undefined {
+  return db.prepare("SELECT * FROM checkout_sessions WHERE state = ?").get(state) as CheckoutSession | undefined;
+}
+
+export function authorizeCheckoutSession(
+  id: string,
+  input: { lineUserId: string; displayName: string },
+): CheckoutSession | undefined {
+  db.prepare(`
+    UPDATE checkout_sessions SET
+      line_user_id = @line_user_id,
+      display_name = @display_name,
+      status = 'authorized',
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = @id
+  `).run({
+    id,
+    line_user_id: input.lineUserId,
+    display_name: input.displayName,
+  });
+  return getCheckoutSession(id);
+}
+
+export function markCheckoutSessionPaid(id: string): CheckoutSession | undefined {
+  db.prepare(`
+    UPDATE checkout_sessions SET
+      status = 'paid',
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(id);
+  return getCheckoutSession(id);
+}
+
+export function createPaymentRecord(input: {
+  id: string;
+  checkoutSessionId: string;
+  lineUserId: string;
+  planId: CheckoutPlanId;
+  role: "student" | "coach";
+  amountTwd: number;
+  status: PaymentRecord["status"];
+  provider: PaymentRecord["provider"];
+  providerTransactionId?: string | null;
+  payerName: string;
+  payerPhone: string;
+  payerEmail: string;
+  resultPin?: string | null;
+}): PaymentRecord {
+  db.prepare(`
+    INSERT INTO payments (
+      id, checkout_session_id, line_user_id, plan_id, role, amount_twd, status, provider,
+      provider_transaction_id, payer_name, payer_phone, payer_email, result_pin
+    ) VALUES (
+      @id, @checkout_session_id, @line_user_id, @plan_id, @role, @amount_twd, @status, @provider,
+      @provider_transaction_id, @payer_name, @payer_phone, @payer_email, @result_pin
+    )
+  `).run({
+    id: input.id,
+    checkout_session_id: input.checkoutSessionId,
+    line_user_id: input.lineUserId,
+    plan_id: input.planId,
+    role: input.role,
+    amount_twd: input.amountTwd,
+    status: input.status,
+    provider: input.provider,
+    provider_transaction_id: input.providerTransactionId || null,
+    payer_name: input.payerName,
+    payer_phone: input.payerPhone,
+    payer_email: input.payerEmail,
+    result_pin: input.resultPin || null,
+  });
+  return db.prepare("SELECT * FROM payments WHERE id = ?").get(input.id) as PaymentRecord;
 }

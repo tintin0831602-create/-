@@ -1,12 +1,21 @@
 import express from "express";
+import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import {
+  authorizeCheckoutSession,
   clearExpiredImageRecordingIntents,
   consumeImageRecordingIntent,
+  claimCoachAccess,
+  createCheckoutSession,
+  createCoachAccess,
+  createPaymentRecord,
+  findCoachAccessByName,
   findUserByDisplayName,
   getCoachAccessByPin,
+  getCheckoutSession,
+  getCheckoutSessionByState,
   grantAccess,
   getDailyTotals,
   getEntriesInDateRange,
@@ -15,8 +24,10 @@ import {
   countStudentsForCoachKey,
   coachKeyForPin,
   listUsers,
+  markCheckoutSessionPaid,
   updateUserBodyStats,
   updateUserGoals,
+  upsertUser,
 } from "./db.js";
 import { handleTextMessage, saveAnalysis } from "./commands.js";
 import { analyzeFoodImage } from "./gemini.js";
@@ -30,7 +41,7 @@ import {
 } from "./line.js";
 import { groupIntroMessage, introMessage, registrationMessage } from "./messages.js";
 import { todayInTimezone } from "./time.js";
-import type { LineEvent, LineWebhookBody } from "./types.js";
+import type { CheckoutPlanId, CheckoutSession, LineEvent, LineWebhookBody } from "./types.js";
 
 const app = express();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -42,7 +53,227 @@ app.get("/health", (_req, res) => {
 
 app.use(express.static(publicDir));
 app.use("/admin", express.static(path.join(publicDir, "admin")));
+app.use("/checkout", express.static(path.join(publicDir, "checkout")));
 app.use("/api", express.json());
+
+const checkoutPlans: Record<
+  CheckoutPlanId,
+  {
+    id: CheckoutPlanId;
+    role: "student" | "coach";
+    label: string;
+    amountTwd: number;
+    days: number;
+    studentQuota?: number;
+    description: string;
+  }
+> = {
+  student_month: {
+    id: "student_month",
+    role: "student",
+    label: "個人月費會員",
+    amountTwd: 60,
+    days: 30,
+    description: "開通 30 天 AI 營養分析權限",
+  },
+  student_year: {
+    id: "student_year",
+    role: "student",
+    label: "個人一年會員",
+    amountTwd: 600,
+    days: 365,
+    description: "開通一年 AI 營養分析權限",
+  },
+  coach_month: {
+    id: "coach_month",
+    role: "coach",
+    label: "教練月費方案",
+    amountTwd: 990,
+    days: 30,
+    studentQuota: 10,
+    description: "產生或續約教練 PIN，含 10 位學員名額",
+  },
+  coach_year: {
+    id: "coach_year",
+    role: "coach",
+    label: "教練一年方案",
+    amountTwd: 9900,
+    days: 365,
+    studentQuota: 10,
+    description: "產生或續約教練 PIN 一年，含 10 位學員名額",
+  },
+};
+
+app.get("/api/checkout/config", (_req, res) => {
+  res.json({
+    lineLoginEnabled: Boolean(config.lineLoginChannelId && config.lineLoginChannelSecret),
+    paymentTestMode: config.paymentTestMode,
+    plans: Object.values(checkoutPlans),
+  });
+});
+
+app.get("/api/checkout/session/:id", (req, res) => {
+  const session = getCheckoutSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: "Checkout session not found" });
+    return;
+  }
+  res.json({
+    session: publicCheckoutSession(session),
+    plan: checkoutPlans[session.plan_id],
+  });
+});
+
+app.post("/api/checkout/test-complete", (req, res) => {
+  if (!config.paymentTestMode) {
+    res.status(403).json({ error: "Test payment mode is disabled" });
+    return;
+  }
+
+  const { sessionId, payerName, payerPhone, payerEmail, coachName } = req.body as {
+    sessionId?: string;
+    payerName?: string;
+    payerPhone?: string;
+    payerEmail?: string;
+    coachName?: string;
+  };
+  if (!sessionId || !payerName || !payerPhone || !payerEmail) {
+    res.status(400).json({ error: "Missing payer information" });
+    return;
+  }
+
+  const session = getCheckoutSession(sessionId);
+  if (!session || session.expires_at <= Date.now()) {
+    res.status(404).json({ error: "Checkout session expired or not found" });
+    return;
+  }
+  if (!session.line_user_id || !session.display_name) {
+    res.status(400).json({ error: "Please authorize with LINE first" });
+    return;
+  }
+
+  const plan = checkoutPlans[session.plan_id];
+  if (!plan) {
+    res.status(400).json({ error: "Unknown checkout plan" });
+    return;
+  }
+
+  let pin: string | null = null;
+  if (plan.role === "coach") {
+    const normalizedCoachName = (coachName || session.coach_name || payerName).trim();
+    const existingAccess = findCoachAccessByName(normalizedCoachName);
+    pin = existingAccess?.pin || generatePin();
+    const extensionBase =
+      existingAccess?.expires_at && existingAccess.expires_at > Date.now()
+        ? existingAccess.expires_at
+        : Date.now();
+    createCoachAccess({
+      pin,
+      coachName: normalizedCoachName,
+      expiresAt: extensionBase + plan.days * 24 * 60 * 60 * 1000,
+      permanentAccess: false,
+      studentQuota: plan.studentQuota || 10,
+      createdByLineUserId: session.line_user_id,
+    });
+    claimCoachAccess(pin, session.line_user_id);
+  } else {
+    grantAccess(session.line_user_id, "student", { days: plan.days });
+  }
+
+  const payment = createPaymentRecord({
+    id: crypto.randomUUID(),
+    checkoutSessionId: session.id,
+    lineUserId: session.line_user_id,
+    planId: plan.id,
+    role: plan.role,
+    amountTwd: plan.amountTwd,
+    status: "test_paid",
+    provider: "test",
+    providerTransactionId: `test_${Date.now()}`,
+    payerName,
+    payerPhone,
+    payerEmail,
+    resultPin: pin,
+  });
+  markCheckoutSessionPaid(session.id);
+
+  res.json({
+    ok: true,
+    payment,
+    plan,
+    result: {
+      role: plan.role,
+      pin,
+      admin_url: pin ? adminUrl(pin, "coach") : adminUrl(undefined, "student"),
+      days: plan.days,
+      student_quota: plan.studentQuota || null,
+    },
+  });
+});
+
+app.get("/auth/line/start", (req, res) => {
+  const planId = normalizePlanId(String(req.query.plan || "student_month"));
+  if (!planId) {
+    res.redirect("/checkout/?error=unknown_plan");
+    return;
+  }
+  if (!config.lineLoginChannelId || !config.lineLoginChannelSecret) {
+    res.redirect("/checkout/?error=line_login_not_configured");
+    return;
+  }
+
+  const state = crypto.randomBytes(18).toString("hex");
+  const session = createCheckoutSession({
+    id: crypto.randomUUID(),
+    state,
+    planId,
+    role: checkoutPlans[planId].role,
+    coachName: typeof req.query.coachName === "string" ? req.query.coachName.trim() : null,
+    expiresAt: Date.now() + 30 * 60 * 1000,
+  });
+  const callbackUrl = lineLoginCallbackUrl();
+  const authUrl = new URL("https://access.line.me/oauth2/v2.1/authorize");
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("client_id", config.lineLoginChannelId);
+  authUrl.searchParams.set("redirect_uri", callbackUrl);
+  authUrl.searchParams.set("state", session.state);
+  authUrl.searchParams.set("scope", "profile openid");
+  authUrl.searchParams.set("nonce", crypto.randomBytes(12).toString("hex"));
+  res.redirect(authUrl.toString());
+});
+
+app.get("/auth/line/callback", async (req, res) => {
+  const code = typeof req.query.code === "string" ? req.query.code : "";
+  const state = typeof req.query.state === "string" ? req.query.state : "";
+  const session = state ? getCheckoutSessionByState(state) : undefined;
+  if (!code || !session || session.expires_at <= Date.now()) {
+    res.redirect("/checkout/?error=line_auth_expired");
+    return;
+  }
+
+  try {
+    const profile = await exchangeLineLoginProfile(code);
+    upsertUser({
+      line_user_id: profile.userId,
+      display_name: profile.displayName,
+      goal_calories: 2000,
+      goal_protein_g: 120,
+      goal_fat_g: 60,
+      goal_carbs_g: 250,
+      role: "student",
+      permanent_access: 0,
+      is_coach: 0,
+    });
+    const authorized = authorizeCheckoutSession(session.id, {
+      lineUserId: profile.userId,
+      displayName: profile.displayName,
+    });
+    res.redirect(`/checkout/?session=${encodeURIComponent(authorized?.id || session.id)}`);
+  } catch (error) {
+    console.error("LINE Login callback failed", error);
+    res.redirect("/checkout/?error=line_auth_failed");
+  }
+});
 
 app.get("/api/admin/summary", (req, res) => {
   const admin = getAdminContext(req);
@@ -467,6 +698,97 @@ function isSafeMenuCommand(text: string): boolean {
     "最高權限設定教學",
     "產生教練pin教學",
   ].includes(command || "");
+}
+
+function normalizePlanId(value: string): CheckoutPlanId | undefined {
+  return Object.prototype.hasOwnProperty.call(checkoutPlans, value)
+    ? (value as CheckoutPlanId)
+    : undefined;
+}
+
+function lineLoginCallbackUrl(): string {
+  if (config.lineLoginCallbackUrl) {
+    return config.lineLoginCallbackUrl;
+  }
+  return `${baseUrl()}/auth/line/callback`;
+}
+
+function baseUrl(): string {
+  return (config.baseUrl || "https://nutritionay1.onrender.com").replace(/\/+$/, "");
+}
+
+function adminUrl(pin?: string, tab?: "student" | "coach" | "admin" | "billing"): string {
+  const params = new URLSearchParams();
+  if (pin) params.set("pin", pin);
+  if (tab) params.set("tab", tab);
+  const query = params.toString();
+  return `${baseUrl()}/admin/${query ? `?${query}` : ""}`;
+}
+
+function publicCheckoutSession(session: CheckoutSession) {
+  return {
+    id: session.id,
+    plan_id: session.plan_id,
+    role: session.role,
+    coach_name: session.coach_name,
+    display_name: session.display_name,
+    status: session.status,
+    expires_at: session.expires_at,
+  };
+}
+
+async function exchangeLineLoginProfile(code: string): Promise<{ userId: string; displayName: string }> {
+  const tokenResponse = await fetch("https://api.line.me/oauth2/v2.1/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: lineLoginCallbackUrl(),
+      client_id: config.lineLoginChannelId,
+      client_secret: config.lineLoginChannelSecret,
+    }),
+  });
+  if (!tokenResponse.ok) {
+    throw new Error(`LINE token exchange failed: ${tokenResponse.status}`);
+  }
+  const token = (await tokenResponse.json()) as { access_token?: string; id_token?: string };
+  if (!token.access_token || !token.id_token) {
+    throw new Error("LINE token response missing access_token or id_token");
+  }
+
+  const verifyResponse = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      id_token: token.id_token,
+      client_id: config.lineLoginChannelId,
+    }),
+  });
+  if (!verifyResponse.ok) {
+    throw new Error(`LINE id_token verify failed: ${verifyResponse.status}`);
+  }
+  const verified = (await verifyResponse.json()) as { sub?: string; name?: string };
+
+  const profileResponse = await fetch("https://api.line.me/v2/profile", {
+    headers: { authorization: `Bearer ${token.access_token}` },
+  });
+  const profile = profileResponse.ok
+    ? ((await profileResponse.json()) as { userId?: string; displayName?: string })
+    : {};
+
+  const userId = profile.userId || verified.sub;
+  if (!userId) {
+    throw new Error("LINE profile missing user id");
+  }
+  return {
+    userId,
+    displayName: profile.displayName || verified.name || "LINE 使用者",
+  };
+}
+
+function generatePin(): string {
+  return crypto.randomBytes(3).toString("hex").toUpperCase();
 }
 
 app.listen(config.port, () => {

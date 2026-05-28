@@ -419,6 +419,10 @@ async function isAddressedToBot(event: LineEvent): Promise<boolean> {
     return false;
   }
 
+  if (isSafeMenuCommand(text)) {
+    return true;
+  }
+
   if (/^(hermes|赫米斯)[，,\s:：]*/iu.test(text)) {
     return true;
   }
@@ -431,6 +435,38 @@ async function isAddressedToBot(event: LineEvent): Promise<boolean> {
 
   const names = [botInfo.displayName, botInfo.basicId].filter(Boolean);
   return names.some((name) => text.startsWith(`@${name}`));
+}
+
+function isSafeMenuCommand(text: string): boolean {
+  const command = text.split(/\s+/).filter(Boolean)[0]?.toLowerCase();
+  return [
+    "help",
+    "幫助",
+    "功能",
+    "指令",
+    "選單",
+    "主選單",
+    "開始",
+    "新手教學",
+    "下一步",
+    "學員區",
+    "教練區",
+    "管理員區",
+    "付款區",
+    "付款",
+    "訂閱",
+    "學員身份",
+    "目標設定",
+    "身體資料教學",
+    "開始記錄",
+    "文字記錄教學",
+    "手動數字教學",
+    "付款說明",
+    "教練授權教學",
+    "教練設定教學",
+    "最高權限設定教學",
+    "產生教練pin教學",
+  ].includes(command || "");
 }
 
 app.listen(config.port, () => {

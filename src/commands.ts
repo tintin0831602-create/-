@@ -9,6 +9,7 @@ import {
   createImageRecordingIntent,
   createCoachAccess,
   deleteLatestEntry,
+  findCoachAccessByClaimedLineUserId,
   findCoachAccessByName,
   findUserByDisplayName,
   grantAccess,
@@ -53,6 +54,7 @@ export async function handleTextMessage(
   const normalized = normalizeCommand(text);
   const parts = normalized.split(/\s+/).filter(Boolean);
   const command = parts[0]?.toLowerCase();
+  const user = getUser(lineUserId);
 
   if (!command || ["help", "幫助", "功能", "指令", "選單", "主選單", "開始"].includes(command)) {
     return lineMainMenuMessage();
@@ -63,7 +65,7 @@ export async function handleTextMessage(
   }
 
   if (command === "學員區") {
-    return studentZoneMessage();
+    return studentZoneMessage(user);
   }
 
   if (command === "學員身份") {
@@ -115,7 +117,16 @@ export async function handleTextMessage(
   }
 
   if (command === "付款說明") {
-    return "付款功能目前已做好 LINE 入口與付款頁骨架。下一步接 LINE Pay、綠界或藍新後，付款成功就會自動開通學員權限或產生教練 PIN。";
+    return [
+      "付款流程目前可測試：",
+      "1. 點付款區選方案",
+      "2. 用 LINE Login 授權身份",
+      "3. 填付款人資訊",
+      "4. 按測試付款並開通",
+      "",
+      "完成後：學員可直接回 LINE 記錄飲食；教練會取得 PIN 與管理台連結。",
+      "正式收款下一步會接 LINE Pay 商家金流。",
+    ].join("\n");
   }
 
   if (command === "教練幫助") {
@@ -130,11 +141,16 @@ export async function handleTextMessage(
     return handleSetUser(lineUserId, parts);
   }
 
-  const user = getUser(lineUserId);
-
   if (command === "教練區") {
     if (parts.length >= 3) {
       return handleCoachZoneLogin(lineUserId, user, parts);
+    }
+    if (user?.is_coach && hasActiveAccess(user)) {
+      const access = findCoachAccessByClaimedLineUserId(lineUserId);
+      if (access) {
+        return coachDashboardLinkMessage(access.coach_name, access.pin, access.student_quota);
+      }
+      return coachHelpMessage();
     }
     return coachZoneMessage();
   }
@@ -832,14 +848,24 @@ function onboardingMenuMessage(): LineReplyMessage {
   ]);
 }
 
-function studentZoneMessage(): LineReplyMessage {
-  return flexMenu("學員區", "今天怎麼記錄？", "可以拍照、用文字、看今日進度，也能回顧本週。", [
+function studentZoneMessage(user?: UserProfile): LineReplyMessage {
+  if (user && hasActiveAccess(user)) {
+    return flexMenu("學員區", `你好，${user.display_name}`, "你已經完成 LINE 身份綁定，可以直接開始記錄或查看進度。", [
+      messageButton("開始記錄", "開始記錄"),
+      messageButton("今日進度", "今日"),
+      messageButton("剩餘熱量", "剩餘"),
+      messageButton("本週回顧", "本週回顧"),
+      messageButton("我的設定", "我的設定"),
+      messageButton("刪除上一筆", "刪除最後一筆"),
+    ]);
+  }
+
+  return flexMenu("學員區", "先完成身份與權限", "如果你剛付款，請回到付款頁完成 LINE 授權與測試付款；如果是教練學員，請先告訴教練你的姓名。", [
     messageButton("設定身份", "學員身份"),
+    uriButton("付款開通", checkoutUrl("student_month")),
     messageButton("設定目標", "目標設定"),
-    messageButton("記錄照片", "開始記錄"),
-    messageButton("今日進度", "今日"),
-    messageButton("本週回顧", "本週回顧"),
-    messageButton("刪除上一筆", "刪除最後一筆"),
+    messageButton("身體資料", "身體資料教學"),
+    messageButton("權限狀態", "權限狀態"),
   ]);
 }
 

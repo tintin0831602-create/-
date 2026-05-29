@@ -10,6 +10,7 @@ import {
   claimCoachAccess,
   createCheckoutSession,
   createCoachAccess,
+  createLineLoginUserIfMissing,
   createPaymentRecord,
   findCoachAccessByName,
   findUserByDisplayName,
@@ -27,7 +28,6 @@ import {
   markCheckoutSessionPaid,
   updateUserBodyStats,
   updateUserGoals,
-  upsertUser,
 } from "./db.js";
 import { handleTextMessage, saveAnalysis } from "./commands.js";
 import { analyzeFoodImage } from "./gemini.js";
@@ -162,6 +162,15 @@ app.post("/api/checkout/test-complete", (req, res) => {
   if (plan.role === "coach") {
     const normalizedCoachName = (coachName || session.coach_name || payerName).trim();
     const existingAccess = findCoachAccessByName(normalizedCoachName);
+    if (
+      existingAccess?.claimed_line_user_id &&
+      existingAccess.claimed_line_user_id !== session.line_user_id
+    ) {
+      res.status(409).json({
+        error: "這個教練名稱已綁定其他 LINE 帳號，請聯絡 Jasper 處理。",
+      });
+      return;
+    }
     pin = existingAccess?.pin || generatePin();
     const extensionBase =
       existingAccess?.expires_at && existingAccess.expires_at > Date.now()
@@ -253,16 +262,9 @@ app.get("/auth/line/callback", async (req, res) => {
 
   try {
     const profile = await exchangeLineLoginProfile(code);
-    upsertUser({
-      line_user_id: profile.userId,
-      display_name: profile.displayName,
-      goal_calories: 2000,
-      goal_protein_g: 120,
-      goal_fat_g: 60,
-      goal_carbs_g: 250,
-      role: "student",
-      permanent_access: 0,
-      is_coach: 0,
+    createLineLoginUserIfMissing({
+      lineUserId: profile.userId,
+      displayName: profile.displayName,
     });
     const authorized = authorizeCheckoutSession(session.id, {
       lineUserId: profile.userId,

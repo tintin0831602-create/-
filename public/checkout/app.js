@@ -49,6 +49,7 @@ async function init() {
     state.session = data.session;
     state.selectedPlan = data.plan.id;
     els.payerName.value = data.session.display_name || "";
+    els.coachName.value = data.session.coach_name || "";
     renderPlans();
     renderAuthStatus();
   } else {
@@ -131,14 +132,19 @@ async function completeTestPayment() {
     if (data.result.pin) {
       showResult(
         "教練方案已開通",
-        `你的教練 PIN 是 ${data.result.pin}。這組 PIN 可登入教練管理台，也可續約沿用。`,
+        `你的教練 PIN 是 ${data.result.pin}。下一步：進入教練管理台，或回 LINE 輸入「教練區」查看管理入口。`,
         false,
-        data.result.admin_url,
+        [
+          { label: "進入教練管理台", href: data.result.admin_url },
+          { label: "回到 LINE", href: "https://line.me/R/ti/p/@541uwkic" },
+        ],
       );
     } else {
       showResult(
         "學員權限已開通",
-        `${plan.label} 已開通 ${data.result.days} 天。回到 LINE 後可以開始記錄飲食。`,
+        `${plan.label} 已開通 ${data.result.days} 天。下一步：回到 LINE 點「學員區」或直接傳餐點照片開始記錄。`,
+        false,
+        [{ label: "回到 LINE 開始記錄", href: "https://line.me/R/ti/p/@541uwkic" }],
       );
     }
   } catch (error) {
@@ -183,13 +189,20 @@ async function postJson(url, body) {
   return data;
 }
 
-function showResult(title, message, isError = false, link) {
+function showResult(title, message, isError = false, actions = []) {
+  const links = Array.isArray(actions) ? actions : actions ? [{ label: "開啟連結", href: actions }] : [];
   els.result.hidden = false;
   els.result.style.background = isError ? "#fff2f0" : "";
   els.result.innerHTML = `
     <strong>${escapeHtml(title)}</strong>
     <p>${escapeHtml(message)}</p>
-    ${link ? `<a href="${link}">進入教練管理台</a>` : ""}
+    ${
+      links.length
+        ? `<div class="result-actions">${links
+            .map((link) => `<a href="${link.href}">${escapeHtml(link.label)}</a>`)
+            .join("")}</div>`
+        : ""
+    }
   `;
   els.result.scrollIntoView({ behavior: "smooth", block: "center" });
 }
@@ -200,6 +213,7 @@ function readableError(error) {
     line_auth_expired: "授權時間過期，請重新按 LINE 授權。",
     line_auth_failed: "LINE 授權失敗，請確認 Callback URL 與 Channel secret。",
     unknown_plan: "找不到這個付款方案。",
+    coach_name_taken: "這個教練名稱已綁定其他 LINE 帳號，請聯絡 Jasper 處理。",
   };
   return map[error] || "請重新操作一次。";
 }

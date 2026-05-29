@@ -168,6 +168,37 @@ export function upsertUser(user: UserProfile): void {
   });
 }
 
+export function createLineLoginUserIfMissing(input: {
+  lineUserId: string;
+  displayName: string;
+}): UserProfile {
+  const existing = getUser(input.lineUserId);
+  if (existing) {
+    db.prepare("UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE line_user_id = ?").run(
+      input.displayName,
+      input.lineUserId,
+    );
+    return getUser(input.lineUserId) as UserProfile;
+  }
+
+  const shouldBecomeOwner =
+    countOwners() === 0 && input.displayName.toLowerCase() === config.ownerDisplayName.toLowerCase();
+  db.prepare(`
+    INSERT INTO users (
+      line_user_id, display_name, goal_calories, goal_protein_g, goal_fat_g, goal_carbs_g,
+      role, access_expires_at, permanent_access, is_coach
+    ) VALUES (?, ?, 2000, 120, 60, 250, ?, ?, ?, ?)
+  `).run(
+    input.lineUserId,
+    input.displayName,
+    shouldBecomeOwner ? "owner" : "student",
+    null,
+    shouldBecomeOwner ? 1 : 0,
+    shouldBecomeOwner ? 1 : 0,
+  );
+  return getUser(input.lineUserId) as UserProfile;
+}
+
 export function getUser(lineUserId: string): UserProfile | undefined {
   return db
     .prepare("SELECT * FROM users WHERE line_user_id = ?")
@@ -338,6 +369,12 @@ export function findCoachAccessByName(coachName: string): CoachAccess | undefine
   return db
     .prepare("SELECT * FROM coach_access WHERE coach_name = ? COLLATE NOCASE ORDER BY created_at ASC LIMIT 1")
     .get(coachName) as CoachAccess | undefined;
+}
+
+export function findCoachAccessByClaimedLineUserId(lineUserId: string): CoachAccess | undefined {
+  return db
+    .prepare("SELECT * FROM coach_access WHERE claimed_line_user_id = ? ORDER BY created_at DESC LIMIT 1")
+    .get(lineUserId) as CoachAccess | undefined;
 }
 
 export function claimCoachAccess(pin: string, lineUserId: string): CoachAccess | undefined {

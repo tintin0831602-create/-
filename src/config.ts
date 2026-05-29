@@ -23,7 +23,7 @@ export const config = {
   lineLoginChannelSecret: optional("LINE_LOGIN_CHANNEL_SECRET", ""),
   lineLoginCallbackUrl: optional("LINE_LOGIN_CALLBACK_URL", ""),
   geminiApiKey: required("GEMINI_API_KEY"),
-  geminiModel: optional("GEMINI_MODEL", "gemini-3.5-flash"),
+  geminiModel: optional("GEMINI_MODEL", "gemini-2.5-flash"),
   databasePath: optional("DATABASE_PATH", "./data/hermes.sqlite"),
   timezone: optional("TIMEZONE", "Asia/Taipei"),
   ownerDisplayName: optional("OWNER_DISPLAY_NAME", "Jasper"),

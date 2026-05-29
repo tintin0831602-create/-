@@ -339,6 +339,76 @@ app.get("/api/admin/summary", (req, res) => {
   });
 });
 
+app.post("/api/admin/test-accounts", (req, res) => {
+  const admin = getAdminContext(req);
+  if (!admin || admin.kind !== "owner") {
+    res.status(401).json({ error: "Owner admin PIN is required" });
+    return;
+  }
+
+  const rawSuffix =
+    typeof req.body?.suffix === "string" && req.body.suffix.trim()
+      ? req.body.suffix.trim()
+      : new Date().toISOString().replace(/[-:.TZ]/g, "").slice(4, 14);
+  const suffix = rawSuffix.replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 24) || crypto.randomBytes(3).toString("hex");
+  const studentActiveId = `TEST_STUDENT_ACTIVE_${suffix}`;
+  const studentInactiveId = `TEST_STUDENT_INACTIVE_${suffix}`;
+  const coachId = `TEST_COACH_ACTIVE_${suffix}`;
+  const activeStudentName = `測試開通學員-${suffix}`;
+  const inactiveStudentName = `測試未開通學員-${suffix}`;
+  const coachName = `測試開通教練-${suffix}`;
+
+  createLineLoginUserIfMissing({ lineUserId: studentActiveId, displayName: activeStudentName });
+  const activeStudent = grantAccess(studentActiveId, "student", { days: 30 });
+
+  createLineLoginUserIfMissing({ lineUserId: studentInactiveId, displayName: inactiveStudentName });
+  const inactiveStudent = grantAccess(studentInactiveId, "student", { days: 0 });
+
+  createLineLoginUserIfMissing({ lineUserId: coachId, displayName: coachName });
+  const existingAccess = findCoachAccessByName(coachName);
+  const pin = existingAccess?.pin || generatePin();
+  const access = createCoachAccess({
+    pin,
+    coachName,
+    expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+    permanentAccess: false,
+    studentQuota: 10,
+    createdByLineUserId: "owner-test-seed",
+  });
+  claimCoachAccess(pin, coachId);
+  const coach = getUser(coachId);
+
+  res.json({
+    ok: true,
+    accounts: {
+      active_student: {
+        name: activeStudent.display_name,
+        line_user_id: activeStudent.line_user_id,
+        status: "開通 30 天",
+      },
+      inactive_student: {
+        name: inactiveStudent.display_name,
+        line_user_id: inactiveStudent.line_user_id,
+        status: "未開通",
+      },
+      active_coach: {
+        name: coach?.display_name || coachName,
+        line_user_id: coachId,
+        status: "教練開通 30 天",
+        pin: access.pin,
+        student_quota: access.student_quota,
+        admin_url: adminUrl(access.pin, "coach"),
+      },
+    },
+    next_steps: [
+      "用教練 PIN 進入管理台。",
+      `在教練管理台授權 ${inactiveStudent.display_name} 7 天或 30 天。`,
+      "授權後可測試修改熱量、三大營養素、身體資料與本週回顧。",
+    ],
+    note: "這些是系統內測試資料，不是真實 LINE 帳號；無法直接在 LINE 裡發訊息。",
+  });
+});
+
 app.post("/api/admin/grant", (req, res) => {
   const admin = getAdminContext(req);
   if (!admin) {

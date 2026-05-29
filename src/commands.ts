@@ -8,6 +8,7 @@ import {
   claimCoachAccess,
   createImageRecordingIntent,
   createCoachAccess,
+  createLineLoginUserIfMissing,
   deleteLatestEntry,
   findCoachAccessByClaimedLineUserId,
   findCoachAccessByName,
@@ -197,7 +198,15 @@ export async function handleTextMessage(
     return handleCoachIntro(lineUserId, parts);
   }
 
-  if (command === "權限成員" || command === "授權" || command === "停用" || command === "產生教練pin") {
+  if (
+    command === "權限成員" ||
+    command === "授權" ||
+    command === "停用" ||
+    command === "產生教練pin" ||
+    command === "產生測試帳號" ||
+    command === "生成測試帳號" ||
+    command === "建立測試帳號"
+  ) {
     return handleOwnerCommand(user, normalized);
   }
 
@@ -317,6 +326,11 @@ function handleOwnerCommand(user: UserProfile, text: string): string {
       : "目前還沒有成員。";
   }
 
+  const testAccountsMatch = text.match(/^(?:產生|生成|建立)測試帳號(?:\s+([\p{L}\p{N}_-]+))?$/u);
+  if (testAccountsMatch) {
+    return createTestAccountsForOwner(user, testAccountsMatch[1]);
+  }
+
   const coachPinMatch = text.match(/^產生教練PIN\s+(.+?)\s+(7天|30天|一年|1年|365天)\s+(\d+)人$/iu);
   if (coachPinMatch) {
     const [, coachName, duration, quotaText] = coachPinMatch;
@@ -381,6 +395,59 @@ function handleOwnerCommand(user: UserProfile, text: string): string {
   }
 
   return ownerHelpMessage();
+}
+
+function createTestAccountsForOwner(owner: UserProfile, suffixInput?: string): string {
+  const suffix =
+    suffixInput?.trim().replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 24) ||
+    new Date().toISOString().replace(/[-:.TZ]/g, "").slice(4, 14);
+  const studentActiveId = `TEST_STUDENT_ACTIVE_${suffix}`;
+  const studentInactiveId = `TEST_STUDENT_INACTIVE_${suffix}`;
+  const coachId = `TEST_COACH_ACTIVE_${suffix}`;
+  const activeStudentName = `測試開通學員-${suffix}`;
+  const inactiveStudentName = `測試未開通學員-${suffix}`;
+  const coachName = `測試開通教練-${suffix}`;
+
+  createLineLoginUserIfMissing({ lineUserId: studentActiveId, displayName: activeStudentName });
+  const activeStudent = grantAccess(studentActiveId, "student", { days: 30 });
+
+  createLineLoginUserIfMissing({ lineUserId: studentInactiveId, displayName: inactiveStudentName });
+  const inactiveStudent = grantAccess(studentInactiveId, "student", { days: 0 });
+
+  createLineLoginUserIfMissing({ lineUserId: coachId, displayName: coachName });
+  const existingAccess = findCoachAccessByName(coachName);
+  const pin = existingAccess?.pin || generatePin();
+  const access = createCoachAccess({
+    pin,
+    coachName,
+    expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+    permanentAccess: false,
+    studentQuota: 10,
+    createdByLineUserId: owner.line_user_id,
+  });
+  claimCoachAccess(pin, coachId);
+
+  return [
+    "已產生測試帳號",
+    "",
+    `開通學員：${activeStudent.display_name}`,
+    "狀態：開通 30 天，可在管理台查看與修改數值",
+    "",
+    `未開通學員：${inactiveStudent.display_name}`,
+    "狀態：未開通，可用教練 PIN 進管理台授權",
+    "",
+    `開通教練：${coachName}`,
+    `教練 PIN：${access.pin}`,
+    `學員名額：${access.student_quota} 人`,
+    `教練管理台：${adminUrl(access.pin, "coach")}`,
+    "",
+    "建議測試：",
+    `1. 用教練 PIN 進管理台`,
+    `2. 授權 ${inactiveStudent.display_name} 7 天或 30 天`,
+    "3. 修改學員熱量、三大營養素、身體資料",
+    "",
+    "提醒：這些是系統內測試資料，不是真實 LINE 帳號；不能直接在 LINE 裡傳訊息。",
+  ].join("\n");
 }
 
 function handleSetOwnerByPin(

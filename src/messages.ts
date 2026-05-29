@@ -62,7 +62,8 @@ export function coachHelpMessage(): string {
 export function ownerHelpMessage(): string {
   return [
     "最高權限功能",
-    "設為最高權限 管理PIN",
+    "設定最高權限 管理PIN",
+    "這個指令可直接使用，不需要先設定熱量和三大營養素",
     "權限成員",
     "產生教練PIN Coach 30天 20人",
     "同一位教練再次使用產生教練PIN，會沿用原 PIN 並延長期限",

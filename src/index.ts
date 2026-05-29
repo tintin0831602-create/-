@@ -158,6 +158,11 @@ app.post("/api/checkout/test-complete", (req, res) => {
     return;
   }
 
+  createLineLoginUserIfMissing({
+    lineUserId: session.line_user_id,
+    displayName: session.display_name,
+  });
+
   let pin: string | null = null;
   if (plan.role === "coach") {
     const normalizedCoachName = (coachName || session.coach_name || payerName).trim();

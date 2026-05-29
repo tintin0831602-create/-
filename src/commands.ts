@@ -56,6 +56,10 @@ export async function handleTextMessage(
   const command = parts[0]?.toLowerCase();
   const user = getUser(lineUserId);
 
+  if (command === "設定最高權限" || command === "設為最高權限") {
+    return handleSetOwnerByPin(lineUserId, user, parts);
+  }
+
   if (!command || ["help", "幫助", "功能", "指令", "選單", "主選單", "開始"].includes(command)) {
     return lineMainMenuMessage();
   }
@@ -101,7 +105,7 @@ export async function handleTextMessage(
   }
 
   if (command === "最高權限設定教學") {
-    return "請在私訊中輸入：\n設為最高權限 你的管理PIN\n\n成功後可使用：管理員區、產生教練 PIN、權限成員。";
+    return "請在私訊中輸入：\n設定最高權限 你的管理PIN\n\n這是最高優先級指令，不需要先設定熱量與三大營養素。成功後可使用：管理員區、產生教練 PIN、權限成員。";
   }
 
   if (command === "產生教練pin教學") {
@@ -183,23 +187,6 @@ export async function handleTextMessage(
 
   if (command === "權限狀態") {
     return accessStatusMessage(user);
-  }
-
-  if (command === "設為最高權限") {
-    const providedPin = parts[1]?.trim();
-    if (config.adminPin && providedPin === config.adminPin) {
-      const owner = setOwner(lineUserId);
-      return `${owner.display_name} 已用管理 PIN 設為最高權限，可以使用：最高權限幫助`;
-    }
-
-    if (countOwners() > 0) {
-      return "目前已經有最高權限帳號。如需把自己設為最高權限，請傳：設為最高權限 管理PIN";
-    }
-    if (user.display_name.toLowerCase() !== config.ownerDisplayName.toLowerCase()) {
-      return `只有名稱為 ${config.ownerDisplayName} 的主帳號可以初始化最高權限。`;
-    }
-    const owner = setOwner(lineUserId);
-    return `${owner.display_name} 已設為最高權限，可以使用：最高權限幫助`;
   }
 
   if (command === "教練登入") {
@@ -394,6 +381,32 @@ function handleOwnerCommand(user: UserProfile, text: string): string {
   }
 
   return ownerHelpMessage();
+}
+
+function handleSetOwnerByPin(
+  lineUserId: string,
+  user: UserProfile | undefined,
+  parts: string[],
+): string {
+  const providedPin = parts[1]?.trim();
+  if (!config.adminPin) {
+    return "尚未設定管理 PIN，請先在 Render 環境變數設定 ADMIN_PIN。";
+  }
+  if (!providedPin) {
+    return "請輸入：設定最高權限 管理PIN";
+  }
+  if (providedPin !== config.adminPin) {
+    return "管理 PIN 不正確，請確認後再試一次。";
+  }
+
+  if (!user) {
+    createStarterUser(lineUserId, config.ownerDisplayName, "owner");
+  }
+  const owner = setOwner(lineUserId);
+  return [
+    `${owner.display_name} 已設為最高權限`,
+    "你現在可以使用：管理員區、最高權限幫助、權限成員、產生教練 PIN。",
+  ].join("\n");
 }
 
 function handleCoachLogin(user: UserProfile, parts: string[]): string {
@@ -665,6 +678,8 @@ function isPublicCommand(command: string | undefined, text: string): boolean {
       "教練設定教學",
       "文字記錄教學",
       "手動數字教學",
+      "設定最高權限",
+      "設為最高權限",
       "最高權限幫助",
       "權限狀態",
       "我的設定",

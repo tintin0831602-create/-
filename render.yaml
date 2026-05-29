@@ -19,7 +19,7 @@ services:
       - key: TIMEZONE
         value: Asia/Taipei
       - key: DATABASE_PATH
-        value: /tmp/hermes.sqlite
+        value: /var/data/hermes.sqlite
       - key: OWNER_DISPLAY_NAME
         value: Jasper
       - key: BASE_URL

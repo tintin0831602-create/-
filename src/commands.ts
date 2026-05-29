@@ -326,6 +326,14 @@ function handleOwnerCommand(user: UserProfile, text: string): string {
       : "目前還沒有成員。";
   }
 
+  const singleTestAccountMatch = text.match(
+    /^(?:產生|生成|建立)測試帳號\s+(學員|教練)(?:\s+(開通|未開通))?(?:\s+([\p{L}\p{N}_-]+))?$/u,
+  );
+  if (singleTestAccountMatch) {
+    const [, kind, status, suffix] = singleTestAccountMatch;
+    return createSingleTestAccountForOwner(user, kind as "學員" | "教練", status as "開通" | "未開通" | undefined, suffix);
+  }
+
   const testAccountsMatch = text.match(/^(?:產生|生成|建立)測試帳號(?:\s+([\p{L}\p{N}_-]+))?$/u);
   if (testAccountsMatch) {
     return createTestAccountsForOwner(user, testAccountsMatch[1]);
@@ -397,10 +405,69 @@ function handleOwnerCommand(user: UserProfile, text: string): string {
   return ownerHelpMessage();
 }
 
+function createSingleTestAccountForOwner(
+  owner: UserProfile,
+  kind: "學員" | "教練",
+  statusInput?: "開通" | "未開通",
+  suffixInput?: string,
+): string {
+  const status = kind === "教練" ? "開通" : statusInput || "未開通";
+  const suffix = normalizeTestSuffix(suffixInput);
+
+  if (kind === "教練") {
+    const coachName = `測試開通教練-${suffix}`;
+    const coachId = `TEST_COACH_ACTIVE_${suffix}`;
+    createLineLoginUserIfMissing({ lineUserId: coachId, displayName: coachName });
+    const existingAccess = findCoachAccessByName(coachName);
+    const pin = existingAccess?.pin || generatePin();
+    const access = createCoachAccess({
+      pin,
+      coachName,
+      expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      permanentAccess: false,
+      studentQuota: 10,
+      createdByLineUserId: owner.line_user_id,
+    });
+    claimCoachAccess(pin, coachId);
+
+    return [
+      "已產生測試教練帳號",
+      `帳號名稱：${coachName}`,
+      "狀態：教練開通 30 天",
+      `教練 PIN：${access.pin}`,
+      `學員名額：${access.student_quota} 人`,
+      `教練管理台：${adminUrl(access.pin, "coach")}`,
+      "",
+      "可複製測試：",
+      `教練登入 ${access.pin}`,
+      "",
+      "提醒：這是系統內測試資料，不是真實 LINE 帳號。",
+    ].join("\n");
+  }
+
+  const isActive = status === "開通";
+  const studentName = `${isActive ? "測試開通學員" : "測試未開通學員"}-${suffix}`;
+  const studentId = `TEST_STUDENT_${isActive ? "ACTIVE" : "INACTIVE"}_${suffix}`;
+  createLineLoginUserIfMissing({ lineUserId: studentId, displayName: studentName });
+  const student = grantAccess(studentId, "student", { days: isActive ? 30 : 0 });
+
+  return [
+    `已產生測試${status}學員帳號`,
+    `帳號名稱：${student.display_name}`,
+    `狀態：${isActive ? "開通 30 天" : "未開通"}`,
+    "",
+    "可複製測試：",
+    `授權 學員 ${student.display_name} 30天`,
+    `教練授權 ${student.display_name} 30天`,
+    `教練設定 ${student.display_name} 2000 120 60 250`,
+    "",
+    "提醒：授權時請複製完整帳號名稱，包含後面的代號。",
+    "這是系統內測試資料，不是真實 LINE 帳號。",
+  ].join("\n");
+}
+
 function createTestAccountsForOwner(owner: UserProfile, suffixInput?: string): string {
-  const suffix =
-    suffixInput?.trim().replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 24) ||
-    new Date().toISOString().replace(/[-:.TZ]/g, "").slice(4, 14);
+  const suffix = normalizeTestSuffix(suffixInput);
   const studentActiveId = `TEST_STUDENT_ACTIVE_${suffix}`;
   const studentInactiveId = `TEST_STUDENT_INACTIVE_${suffix}`;
   const coachId = `TEST_COACH_ACTIVE_${suffix}`;
@@ -448,6 +515,13 @@ function createTestAccountsForOwner(owner: UserProfile, suffixInput?: string): s
     "",
     "提醒：這些是系統內測試資料，不是真實 LINE 帳號；不能直接在 LINE 裡傳訊息。",
   ].join("\n");
+}
+
+function normalizeTestSuffix(suffixInput?: string): string {
+  return (
+    suffixInput?.trim().replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 24) ||
+    new Date().toISOString().replace(/[-:.TZ]/g, "").slice(4, 14)
+  );
 }
 
 function handleSetOwnerByPin(

@@ -406,6 +406,12 @@ async function apiPost(path, body) {
 
 async function friendlyError(res) {
   const text = await res.text();
+  let serverMessage = text;
+  try {
+    serverMessage = JSON.parse(text).error || text;
+  } catch {
+    serverMessage = text;
+  }
   if (res.status === 401) {
     return "管理 PIN 不正確，請輸入 Render 裡的 ADMIN_PIN 後按更新。";
   }
@@ -413,9 +419,9 @@ async function friendlyError(res) {
     return "找不到這位成員。請確認 LINE 裡的設定姓名是否一致。";
   }
   if (res.status === 403) {
-    return "權限不足。教練只能管理自己名下的學員，且不能給永久權限。";
+    return serverMessage || "權限不足。教練只能管理自己名下的學員，且不能給永久權限。";
   }
-  return text || `載入失敗：${res.status}`;
+  return serverMessage || `載入失敗：${res.status}`;
 }
 
 function showError(error) {

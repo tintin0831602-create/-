@@ -270,9 +270,16 @@ export function countCoaches(): number {
 }
 
 export function setCoach(lineUserId: string): UserProfile {
-  db.prepare(
-    "UPDATE users SET role = 'coach', permanent_access = 1, is_coach = 1, updated_at = CURRENT_TIMESTAMP WHERE line_user_id = ?",
-  ).run(lineUserId);
+  db.prepare(`
+    UPDATE users SET
+      role = 'coach',
+      permanent_access = 0,
+      access_expires_at = ?,
+      student_quota = 2,
+      is_coach = 1,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE line_user_id = ?
+  `).run(Date.now() + 7 * 24 * 60 * 60 * 1000, lineUserId);
   return getUser(lineUserId) as UserProfile;
 }
 
@@ -437,6 +444,17 @@ export function countStudentsForCoachKey(coachKey: string): number {
   const row = db
     .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'student' AND coach_owner_id = ?")
     .get(coachKey) as { count: number };
+  return row.count;
+}
+
+export function countStudentsForCoachKeys(coachKeys: string[]): number {
+  if (!coachKeys.length) {
+    return 0;
+  }
+  const placeholders = coachKeys.map(() => "?").join(",");
+  const row = db
+    .prepare(`SELECT COUNT(*) AS count FROM users WHERE role = 'student' AND coach_owner_id IN (${placeholders})`)
+    .get(...coachKeys) as { count: number };
   return row.count;
 }
 

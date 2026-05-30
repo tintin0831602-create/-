@@ -3,7 +3,7 @@ import {
   addFoodEntry,
   countCoaches,
   coachKeyForPin,
-  countStudentsForCoach,
+  countStudentsForCoachKeys,
   countOwners,
   claimCoachAccess,
   createImageRecordingIntent,
@@ -640,14 +640,20 @@ function handleCoachCommand(user: UserProfile, text: string, parts: string[]): s
     const [, name, duration] = grantStudentMatch;
     const target = findUserByDisplayName(name.trim());
     if (!target) return `找不到成員：${name.trim()}`;
-    const used = countStudentsForCoach(user.line_user_id);
-    const quota = user.student_quota ?? 0;
-    const alreadyOwned = target.coach_owner_id === user.line_user_id;
-    if (!alreadyOwned && quota > 0 && used >= quota) {
-      return `你的學員名額已滿：${used}/${quota}。請聯絡 Jasper 增加名額。`;
-    }
+    const coachKeys = coachOwnerKeys(user);
     const days = subscriptionDays(duration);
-    if (!days || !canCoachGrantDays(user, days)) {
+    if (user.role !== "owner" && isCoachExpired(user)) {
+      return "⚠️ 您的方案已到期，無法授權新學員。請先前往管理後台續費。";
+    }
+    if (user.role !== "owner") {
+      const used = countStudentsForCoachKeys(coachKeys);
+      const quota = user.student_quota ?? 0;
+      const alreadyOwned = coachKeys.includes(target.coach_owner_id || "");
+      if (!alreadyOwned && used >= quota) {
+        return `⚠️ 您的學員管理名額（目前上限為 ${quota} 人）已滿，請前往管理台升級方案以授權更多學員。`;
+      }
+    }
+    if (!days || (user.role !== "owner" && !canCoachGrantDays(user, days))) {
       return "學員訂閱天數不能超過你的教練身份有效期限。7 天教練只能先給 7 天試用；要開 30 天或一年，請聯絡 Jasper 升級教練權限。";
     }
     const updated = grantAccess(target.line_user_id, "student", {
@@ -747,6 +753,22 @@ function canCoachGrantDays(coach: UserProfile, days: number): boolean {
     return false;
   }
   return days <= Math.max(0, Math.ceil((coach.access_expires_at - Date.now()) / (24 * 60 * 60 * 1000)));
+}
+
+function isCoachExpired(coach: UserProfile): boolean {
+  return (
+    coach.role !== "owner" &&
+    !coach.permanent_access &&
+    Boolean(coach.access_expires_at && coach.access_expires_at < Date.now())
+  );
+}
+
+function coachOwnerKeys(coach: UserProfile): string[] {
+  if (coach.role === "owner") {
+    return [coach.line_user_id];
+  }
+  const access = findCoachAccessByClaimedLineUserId(coach.line_user_id);
+  return access ? [coach.line_user_id, coachKeyForPin(access.pin)] : [coach.line_user_id];
 }
 
 function handleBodyStats(user: UserProfile, parts: string[]): string {
@@ -999,6 +1021,19 @@ function handleStudentIntro(lineUserId: string, parts: string[]): string {
 }
 
 function handleCoachIntro(lineUserId: string, parts: string[]): BotResponse {
+  if (parts.length === 2) {
+    const displayName = parts[1].trim();
+    const user = createStarterUser(lineUserId, displayName, "coach");
+    return [
+      `你好，${user.display_name} 教練，已建立 7 天免費試用。`,
+      "試用期間最多可管理 2 位學員。",
+      `到期日：${formatDate(user.access_expires_at || null)}`,
+      "",
+      "下一步：請讓學員先傳「我是學員 學員姓名」，再由你傳：",
+      "教練授權 學員姓名 7天",
+    ].join("\n");
+  }
+
   const pin = parts.at(-1)?.trim();
   const displayName = parts.slice(1, -1).join(" ").trim();
   if (!displayName || !pin) {
@@ -1103,9 +1138,13 @@ function studentIdentityPrompt(): string {
 
 function coachLoginPrompt(): string {
   return [
-    "請輸入教練名稱與 PIN：",
+    "試用教練請輸入：",
+    "我是教練 教練名稱",
+    "",
+    "已有 PIN 的教練請輸入：",
     "教練區 教練名稱 PIN",
     "",
+    "例：我是教練 jasper教練",
     "例：教練區 jasper教練 A1B2C3",
     "登入成功後，我會給你可點擊的教練管理台連結。",
   ].join("\n");
@@ -1232,11 +1271,12 @@ function sumEntries(entries: FoodEntry[]) {
 function createStarterUser(
   lineUserId: string,
   displayName: string,
-  role: "student" | "owner",
+  role: "student" | "owner" | "coach",
 ): UserProfile {
   const shouldBecomeOwner =
     role === "owner" ||
     (countOwners() === 0 && displayName.toLowerCase() === config.ownerDisplayName.toLowerCase());
+  const shouldBecomeCoach = role === "coach" && !shouldBecomeOwner;
   const user: UserProfile = {
     line_user_id: lineUserId,
     display_name: displayName,
@@ -1244,12 +1284,19 @@ function createStarterUser(
     goal_protein_g: 120,
     goal_fat_g: 60,
     goal_carbs_g: 250,
-    role: shouldBecomeOwner ? "owner" : "student",
+    role: shouldBecomeOwner ? "owner" : shouldBecomeCoach ? "coach" : "student",
     access_expires_at: shouldBecomeOwner ? null : Date.now() + 7 * 24 * 60 * 60 * 1000,
     permanent_access: shouldBecomeOwner ? 1 : 0,
-    is_coach: shouldBecomeOwner ? 1 : 0,
+    is_coach: shouldBecomeOwner || shouldBecomeCoach ? 1 : 0,
+    student_quota: shouldBecomeCoach ? 2 : undefined,
   };
   upsertUser(user);
+  if (shouldBecomeOwner) {
+    return setOwner(lineUserId);
+  }
+  if (shouldBecomeCoach) {
+    return grantAccess(lineUserId, "coach", { days: 7, studentQuota: 2 });
+  }
   return getUser(lineUserId) as UserProfile;
 }
 

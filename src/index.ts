@@ -23,7 +23,7 @@ import {
   getEntriesInDateRange,
   getUser,
   listUsersForCoachKeys,
-  countStudentsForCoachKey,
+  countStudentsForCoachKeys,
   coachKeyForPin,
   listUsers,
   markCheckoutSessionPaid,
@@ -465,15 +465,21 @@ app.post("/api/admin/grant", (req, res) => {
       return;
     }
     const requestedDays = durationToDays(duration);
+    const coachKey = admin.primaryCoachKey;
+    const alreadyOwned = admin.coachKeys.includes(user.coach_owner_id || "");
+    if (isAdminCoachExpired(admin)) {
+      res.status(403).json({ error: "⚠️ 您的方案已到期，無法授權新學員。請先前往管理後台續費。" });
+      return;
+    }
     if (!requestedDays || !canCoachGrantDays(admin, requestedDays)) {
       res.status(403).json({ error: "Student subscription cannot exceed coach access period" });
       return;
     }
-    const coachKey = admin.primaryCoachKey;
-    const alreadyOwned = admin.coachKeys.includes(user.coach_owner_id || "");
-    const used = admin.coachKeys.reduce((total, key) => total + countStudentsForCoachKey(key), 0);
+    const used = countStudentsForCoachKeys(admin.coachKeys);
     if (!alreadyOwned && used >= admin.studentQuota) {
-      res.status(403).json({ error: `Student quota is full: ${used}/${admin.studentQuota}` });
+      res.status(403).json({
+        error: `⚠️ 您的學員管理名額（目前上限為 ${admin.studentQuota} 人）已滿，請前往管理台升級方案以授權更多學員。`,
+      });
       return;
     }
     const updated = grantAccess(user.line_user_id, "student", {
@@ -706,6 +712,12 @@ async function handleEvent(event: LineEvent): Promise<void> {
       return;
     }
 
+    const coachLockMessage = getExpiredCoachServiceMessage(lineUserId);
+    if (coachLockMessage) {
+      await replyText(event.replyToken, coachLockMessage);
+      return;
+    }
+
     await showLoading(lineUserId, 10);
     const text = event.message.text || "";
     const response = await handleTextMessage(lineUserId, text, sourceId);
@@ -732,6 +744,12 @@ async function handleEvent(event: LineEvent): Promise<void> {
       return;
     }
 
+    const coachLockMessage = getExpiredCoachServiceMessage(lineUserId);
+    if (coachLockMessage) {
+      await replyText(event.replyToken, coachLockMessage);
+      return;
+    }
+
     await showLoading(lineUserId, 20);
     const content = await getMessageContent(event.message.id);
     const analysis = await analyzeFoodImage(content.data, content.contentType);
@@ -745,6 +763,51 @@ async function handleEvent(event: LineEvent): Promise<void> {
 
 function getSourceId(event: LineEvent): string {
   return event.source?.groupId || event.source?.roomId || event.source?.userId || "unknown";
+}
+
+function getExpiredCoachServiceMessage(lineUserId: string): string | undefined {
+  const user = getUser(lineUserId);
+  if (!user || user.role !== "student" || !user.coach_owner_id) {
+    return undefined;
+  }
+
+  const coachStatus = getStudentCoachStatus(user.coach_owner_id);
+  if (!coachStatus || coachStatus.isOwner || coachStatus.isActive) {
+    return undefined;
+  }
+
+  return "⚠️ 您的營養教練服務目前已到期。請聯繫您的教練續約以繼續使用營養分析服務。";
+}
+
+function getStudentCoachStatus(coachOwnerId: string): { isActive: boolean; isOwner: boolean } | undefined {
+  if (coachOwnerId.startsWith("pin:")) {
+    const access = getCoachAccessByPin(coachOwnerId.slice(4));
+    if (!access) {
+      return undefined;
+    }
+    if (access.claimed_line_user_id) {
+      const claimedCoach = getUser(access.claimed_line_user_id);
+      if (claimedCoach?.role === "owner") {
+        return { isActive: true, isOwner: true };
+      }
+    }
+    return {
+      isActive: Boolean(access.permanent_access) || Boolean(access.expires_at && access.expires_at >= Date.now()),
+      isOwner: false,
+    };
+  }
+
+  const coach = getUser(coachOwnerId);
+  if (!coach) {
+    return undefined;
+  }
+  if (coach.role === "owner") {
+    return { isActive: true, isOwner: true };
+  }
+  return {
+    isActive: Boolean(coach.permanent_access) || Boolean(coach.access_expires_at && coach.access_expires_at >= Date.now()),
+    isOwner: false,
+  };
 }
 
 async function isAddressedToBot(event: LineEvent): Promise<boolean> {
@@ -920,9 +983,6 @@ function getAdminContext(req: express.Request): AdminContext | undefined {
   if (!coachAccess) {
     return undefined;
   }
-  if (!coachAccess.permanent_access && coachAccess.expires_at && coachAccess.expires_at <= Date.now()) {
-    return undefined;
-  }
 
   const pinKey = coachKeyForPin(coachAccess.pin);
   const coachKeys = coachAccess.claimed_line_user_id
@@ -984,6 +1044,10 @@ function canCoachGrantDays(admin: Extract<AdminContext, { kind: "coach" }>, days
     return false;
   }
   return days <= remainingWholeDays(admin.expiresAt);
+}
+
+function isAdminCoachExpired(admin: Extract<AdminContext, { kind: "coach" }>): boolean {
+  return !admin.permanentAccess && Boolean(admin.expiresAt && admin.expiresAt < Date.now());
 }
 
 function maxGrantDays(admin: Extract<AdminContext, { kind: "coach" }>): number | null {

@@ -157,6 +157,7 @@ function renderMembers() {
       const quota = user.role === "coach" ? ` · 名額 ${user.student_quota || 0} 人` : "";
       const ownerLabel = user.coach_owner_id ? "教練學員" : "個人訂閱";
       const selected = user.display_name === state.selectedName;
+      const canDelete = state.mode === "owner" && user.role !== "owner";
       return `
         <article class="member ${selected ? "selected" : ""}" data-name="${escapeHtml(user.display_name)}">
           <div class="member-main">
@@ -164,7 +165,10 @@ function renderMembers() {
               <div class="name">${escapeHtml(user.display_name)}</div>
               <div class="meta">${role} · ${ownerLabel} · ${accessText(user)}${quota}</div>
             </div>
-            <span class="badge ${active ? "" : "warn"}">${active ? "可使用" : "未啟用"}</span>
+            <div class="member-actions">
+              <span class="badge ${active ? "" : "warn"}">${active ? "可使用" : "未啟用"}</span>
+              ${canDelete ? `<button class="delete-member" data-name="${escapeHtml(user.display_name)}" type="button">刪除</button>` : ""}
+            </div>
           </div>
           <div class="macro-grid">
             ${macroTile("熱量", totals.calories, user.goal_calories, "kcal", "calories")}
@@ -196,6 +200,12 @@ function renderMembers() {
       fillEditor(node.dataset.name);
       renderMembers();
       loadWeeklyReview().catch(showError);
+    });
+  });
+  document.querySelectorAll(".delete-member").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteMember(button.dataset.name).catch(showError);
     });
   });
 }
@@ -338,6 +348,21 @@ async function saveUserValues() {
   } catch (error) {
     showError(error);
   }
+}
+
+async function deleteMember(name) {
+  if (!name) return;
+  const confirmed = window.confirm(`確定要刪除「${name}」嗎？\n\n教練被刪除時，名下學員會解除綁定但不會一起刪除。`);
+  if (!confirmed) {
+    return;
+  }
+  await apiPost("/api/admin/delete-user", { name });
+  if (state.selectedName === name) {
+    state.selectedName = "";
+    els.editName.value = "";
+  }
+  setNotice(`已刪除 ${name}。`);
+  await loadSummary();
 }
 
 function fillEditor(name) {

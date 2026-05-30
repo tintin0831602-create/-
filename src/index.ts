@@ -12,6 +12,8 @@ import {
   createCoachAccess,
   createLineLoginUserIfMissing,
   createPaymentRecord,
+  deleteGeneratedTestAccounts,
+  deleteUserAccount,
   findCoachAccessByName,
   findUserByDisplayName,
   getCoachAccessByPin,
@@ -435,6 +437,63 @@ app.post("/api/admin/load-test-seed", (req, res) => {
   });
 });
 
+app.post("/api/admin/reset-test-data", (req, res) => {
+  const token = req.header("x-load-test-token") || String(req.body?.token || "");
+  if (!config.loadTestSeedToken || token !== config.loadTestSeedToken) {
+    res.status(401).json({ error: "Maintenance token is required" });
+    return;
+  }
+
+  const deleted = deleteGeneratedTestAccounts();
+  const xiaoyu =
+    findUserByDisplayName("小御") ||
+    createLineLoginUserIfMissing({
+      lineUserId: "MANUAL_STUDENT_XIAOYU",
+      displayName: "小御",
+    });
+  const permanentStudent = grantAccess(xiaoyu.line_user_id, "student", { permanent: true });
+
+  const jasperCoach =
+    findUserByDisplayName("jasper01") ||
+    createLineLoginUserIfMissing({
+      lineUserId: "MANUAL_COACH_JASPER01",
+      displayName: "jasper01",
+    });
+  const existingAccess = findCoachAccessByName("jasper01");
+  const pin = existingAccess?.pin || generatePin();
+  const access = createCoachAccess({
+    pin,
+    coachName: "jasper01",
+    expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+    permanentAccess: false,
+    studentQuota: 2,
+    createdByLineUserId: "maintenance-reset",
+  });
+  claimCoachAccess(pin, jasperCoach.line_user_id);
+  const updatedJasperCoach = getUser(jasperCoach.line_user_id);
+
+  res.json({
+    ok: true,
+    deleted,
+    accounts: {
+      permanent_student: {
+        name: permanentStudent.display_name,
+        line_user_id: permanentStudent.line_user_id,
+        status: "永久使用",
+      },
+      trial_coach: {
+        name: updatedJasperCoach?.display_name || "jasper01",
+        line_user_id: jasperCoach.line_user_id,
+        status: "教練 7 天試用",
+        pin: access.pin,
+        student_quota: access.student_quota,
+        expires_at: access.expires_at,
+        admin_url: adminUrl(access.pin, "coach"),
+      },
+    },
+  });
+});
+
 app.post("/api/admin/grant", (req, res) => {
   const admin = getAdminContext(req);
   if (!admin) {
@@ -505,6 +564,40 @@ app.post("/api/admin/grant", (req, res) => {
     studentQuota: role === "coach" ? Number(studentQuota || 10) : undefined,
   });
   res.json({ ok: true, user: updated });
+});
+
+app.post("/api/admin/delete-user", (req, res) => {
+  const admin = getAdminContext(req);
+  if (!admin || admin.kind !== "owner") {
+    res.status(401).json({ error: "Owner admin PIN is required" });
+    return;
+  }
+
+  const name = String(req.body?.name || "").trim();
+  if (!name) {
+    res.status(400).json({ error: "Missing name" });
+    return;
+  }
+
+  const user = findUserByDisplayName(name);
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  if (user.role === "owner") {
+    res.status(403).json({ error: "最高權限帳號不能從管理台刪除。" });
+    return;
+  }
+
+  deleteUserAccount(user.line_user_id);
+  res.json({
+    ok: true,
+    deleted: {
+      name: user.display_name,
+      line_user_id: user.line_user_id,
+      role: user.role || "student",
+    },
+  });
 });
 
 app.post("/api/admin/update-user", (req, res) => {

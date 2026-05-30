@@ -289,6 +289,22 @@ summary {
   gap: 12px;
 }
 
+.member-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.delete-member {
+  min-height: 28px;
+  border: 1px solid #efc5bd;
+  background: #fff7f5;
+  color: var(--rose);
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 .name {
   font-weight: 900;
 }
@@ -707,6 +723,12 @@ label {
   }
 
   .today-foods p {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .member-main,
+  .member-actions {
     align-items: start;
     flex-direction: column;
   }

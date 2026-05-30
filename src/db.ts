@@ -387,6 +387,12 @@ export function findCoachAccessByClaimedLineUserId(lineUserId: string): CoachAcc
     .get(lineUserId) as CoachAccess | undefined;
 }
 
+export function listCoachAccessByClaimedLineUserId(lineUserId: string): CoachAccess[] {
+  return db
+    .prepare("SELECT * FROM coach_access WHERE claimed_line_user_id = ? ORDER BY created_at DESC")
+    .all(lineUserId) as CoachAccess[];
+}
+
 export function claimCoachAccess(pin: string, lineUserId: string): CoachAccess | undefined {
   const access = getCoachAccessByPin(pin);
   if (!access) {
@@ -472,6 +478,64 @@ export function resetUser(lineUserId: string): void {
   db.prepare("DELETE FROM food_entries WHERE line_user_id = ?").run(lineUserId);
   db.prepare("DELETE FROM image_recording_intents WHERE line_user_id = ?").run(lineUserId);
   db.prepare("DELETE FROM users WHERE line_user_id = ?").run(lineUserId);
+}
+
+export function deleteUserAccount(lineUserId: string): void {
+  const user = getUser(lineUserId);
+  const coachPins = listCoachAccessByClaimedLineUserId(lineUserId).map((access) => access.pin);
+  const coachOwnerKeys = [lineUserId, ...coachPins.map((pin) => coachKeyForPin(pin))];
+  const placeholders = coachOwnerKeys.map(() => "?").join(",");
+
+  if (coachOwnerKeys.length) {
+    db.prepare(`UPDATE users SET coach_owner_id = NULL WHERE coach_owner_id IN (${placeholders})`).run(
+      ...coachOwnerKeys,
+    );
+  }
+  db.prepare("DELETE FROM food_entries WHERE line_user_id = ?").run(lineUserId);
+  db.prepare("DELETE FROM image_recording_intents WHERE line_user_id = ?").run(lineUserId);
+  db.prepare("DELETE FROM checkout_sessions WHERE line_user_id = ?").run(lineUserId);
+  db.prepare("DELETE FROM payments WHERE line_user_id = ?").run(lineUserId);
+  db.prepare("DELETE FROM coach_access WHERE claimed_line_user_id = ? OR created_by_line_user_id = ?").run(
+    lineUserId,
+    lineUserId,
+  );
+  if (user) {
+    db.prepare("DELETE FROM coach_access WHERE coach_name = ? COLLATE NOCASE").run(user.display_name);
+  }
+  db.prepare("DELETE FROM users WHERE line_user_id = ?").run(lineUserId);
+}
+
+export function deleteGeneratedTestAccounts(): {
+  usersDeleted: number;
+  coachAccessDeleted: number;
+} {
+  const testUsers = db
+    .prepare(
+      `SELECT line_user_id FROM users
+       WHERE line_user_id LIKE 'TEST_%'
+          OR line_user_id LIKE 'LOAD_%'
+          OR display_name LIKE '測試%'
+          OR display_name LIKE '壓測%'`,
+    )
+    .all() as Array<{ line_user_id: string }>;
+
+  for (const user of testUsers) {
+    deleteUserAccount(user.line_user_id);
+  }
+
+  const coachAccessResult = db
+    .prepare(
+      `DELETE FROM coach_access
+       WHERE coach_name LIKE '測試%'
+          OR coach_name LIKE '壓測%'
+          OR created_by_line_user_id IN ('owner-test-seed', 'load-test-seed')`,
+    )
+    .run();
+
+  return {
+    usersDeleted: testUsers.length,
+    coachAccessDeleted: Number(coachAccessResult.changes || 0),
+  };
 }
 
 export function addFoodEntry(entry: Omit<FoodEntry, "id" | "created_at">): FoodEntry {

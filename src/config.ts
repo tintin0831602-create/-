@@ -28,5 +28,6 @@ export const config = {
   timezone: optional("TIMEZONE", "Asia/Taipei"),
   ownerDisplayName: optional("OWNER_DISPLAY_NAME", "Jasper"),
   adminPin: optional("ADMIN_PIN", ""),
+  loadTestSeedToken: optional("LOAD_TEST_SEED_TOKEN", ""),
   paymentTestMode: optional("PAYMENT_TEST_MODE", "true") !== "false",
 };

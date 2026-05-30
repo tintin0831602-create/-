@@ -40,6 +40,7 @@ import {
   verifyLineSignature,
 } from "./line.js";
 import { groupIntroMessage, introMessage, registrationMessage } from "./messages.js";
+import { createLoadTestDataset, formatLoadTestDatasetText } from "./testSeed.js";
 import { todayInTimezone } from "./time.js";
 import type { CheckoutPlanId, CheckoutSession, LineEvent, LineWebhookBody } from "./types.js";
 
@@ -406,6 +407,29 @@ app.post("/api/admin/test-accounts", (req, res) => {
       "授權後可測試修改熱量、三大營養素、身體資料與本週回顧。",
     ],
     note: "這些是系統內測試資料，不是真實 LINE 帳號；無法直接在 LINE 裡發訊息。",
+  });
+});
+
+app.post("/api/admin/load-test-seed", (req, res) => {
+  const token = req.header("x-load-test-token") || String(req.body?.token || "");
+  if (!config.loadTestSeedToken || token !== config.loadTestSeedToken) {
+    res.status(401).json({ error: "Load test seed token is required" });
+    return;
+  }
+
+  const dataset = createLoadTestDataset({
+    studentCount: Number(req.body?.students || 50),
+    coachCount: Number(req.body?.coaches || 5),
+    suffix: typeof req.body?.suffix === "string" ? req.body.suffix : undefined,
+    createdByLineUserId: "load-test-seed",
+  });
+
+  res.json({
+    ok: true,
+    dataset,
+    summary: formatLoadTestDatasetText(dataset, {
+      adminUrlForPin: (pin) => adminUrl(pin, "coach"),
+    }),
   });
 });
 

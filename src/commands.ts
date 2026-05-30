@@ -44,6 +44,7 @@ import {
   userSettingsMessage,
 } from "./messages.js";
 import { config } from "./config.js";
+import { createLoadTestDataset, formatLoadTestDatasetText } from "./testSeed.js";
 import { todayInTimezone } from "./time.js";
 import type { BotResponse, FoodAnalysis, FoodEntry, LineReplyMessage, UserProfile } from "./types.js";
 
@@ -205,7 +206,13 @@ export async function handleTextMessage(
     command === "產生教練pin" ||
     command === "產生測試帳號" ||
     command === "生成測試帳號" ||
-    command === "建立測試帳號"
+    command === "建立測試帳號" ||
+    command === "產生壓力測試資料" ||
+    command === "生成壓力測試資料" ||
+    command === "建立壓力測試資料" ||
+    command === "產生批次測試帳號" ||
+    command === "生成批次測試帳號" ||
+    command === "建立批次測試帳號"
   ) {
     return handleOwnerCommand(user, normalized);
   }
@@ -337,6 +344,22 @@ function handleOwnerCommand(user: UserProfile, text: string): string {
   const testAccountsMatch = text.match(/^(?:產生|生成|建立)測試帳號(?:\s+([\p{L}\p{N}_-]+))?$/u);
   if (testAccountsMatch) {
     return createTestAccountsForOwner(user, testAccountsMatch[1]);
+  }
+
+  const loadTestMatch = text.match(
+    /^(?:產生|生成|建立)(?:壓力測試資料|批次測試帳號)(?:\s+(\d+)學生)?(?:\s+(\d+)教練)?(?:\s+([\p{L}\p{N}_-]+))?$/u,
+  );
+  if (loadTestMatch) {
+    const [, studentText, coachText, suffix] = loadTestMatch;
+    const dataset = createLoadTestDataset({
+      studentCount: Number(studentText || 50),
+      coachCount: Number(coachText || 5),
+      suffix,
+      createdByLineUserId: user.line_user_id,
+    });
+    return formatLoadTestDatasetText(dataset, {
+      adminUrlForPin: (pin) => adminUrl(pin, "coach"),
+    });
   }
 
   const coachPinMatch = text.match(/^產生教練PIN\s+(.+?)\s+(7天|30天|一年|1年|365天)\s+(\d+)人$/iu);

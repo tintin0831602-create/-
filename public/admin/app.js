@@ -3,6 +3,7 @@ const state = {
   mode: "owner",
   coach: null,
   weekly: null,
+  selectedName: "",
 };
 
 const els = {
@@ -71,11 +72,16 @@ if (initialParams.get("tab")) {
 }
 
 loadSummary().catch(showError);
+setInterval(() => {
+  if (document.visibilityState === "visible" && els.pin.value) {
+    loadSummary({ silent: true }).catch(() => {});
+  }
+}, 30000);
 
-async function loadSummary() {
+async function loadSummary(options = {}) {
   localStorage.setItem("hermesAdminPin", els.pin.value);
-  setNotice("載入中...");
-  setMetrics("-");
+  if (!options.silent) setNotice("載入中...");
+  if (!options.silent) setMetrics("-");
   const data = await apiGet("/api/admin/summary");
   state.users = data.users;
   state.mode = data.mode || "owner";
@@ -87,7 +93,12 @@ async function loadSummary() {
   renderMembers();
   renderCoachInfo();
   renderAccessControls();
-  setNotice(`已載入 ${data.totals.users} 位成員。${state.mode === "coach" ? "目前是教練管理模式。" : ""}`);
+  if (!state.selectedName && state.users.length) {
+    state.selectedName = state.users[0].display_name;
+  }
+  if (!options.silent) {
+    setNotice(`已載入 ${data.totals.users} 位成員。${state.mode === "coach" ? "目前是教練管理模式。" : ""}`);
+  }
 }
 
 function activateTab(tabName) {
@@ -142,22 +153,37 @@ function renderMembers() {
       const role = user.role === "owner" ? "最高權限" : user.role === "coach" ? "教練" : "學員";
       const active = isActive(user);
       const totals = user.today_totals;
+      const entries = user.today_entries || [];
       const quota = user.role === "coach" ? ` · 名額 ${user.student_quota || 0} 人` : "";
       const ownerLabel = user.coach_owner_id ? "教練學員" : "個人訂閱";
+      const selected = user.display_name === state.selectedName;
       return `
-        <article class="member" data-name="${escapeHtml(user.display_name)}">
-          <div>
-            <div class="name">${escapeHtml(user.display_name)}</div>
-            <div class="meta">${role} · ${ownerLabel} · ${accessText(user)}${quota}</div>
-          </div>
-          <div class="macro">
-            目標 ${Math.round(user.goal_calories)} kcal<br>
-            P${Math.round(user.goal_protein_g)} F${Math.round(user.goal_fat_g)} C${Math.round(user.goal_carbs_g)}
-            ${bodyText(user)}
-          </div>
-          <div class="access">
-            今日 ${Math.round(totals.calories)} kcal<br>
+        <article class="member ${selected ? "selected" : ""}" data-name="${escapeHtml(user.display_name)}">
+          <div class="member-main">
+            <div>
+              <div class="name">${escapeHtml(user.display_name)}</div>
+              <div class="meta">${role} · ${ownerLabel} · ${accessText(user)}${quota}</div>
+            </div>
             <span class="badge ${active ? "" : "warn"}">${active ? "可使用" : "未啟用"}</span>
+          </div>
+          <div class="macro-grid">
+            ${macroTile("熱量", totals.calories, user.goal_calories, "kcal", "calories")}
+            ${macroTile("蛋白", totals.protein_g, user.goal_protein_g, "g", "protein")}
+            ${macroTile("脂肪", totals.fat_g, user.goal_fat_g, "g", "fat")}
+            ${macroTile("碳水", totals.carbs_g, user.goal_carbs_g, "g", "carbs")}
+          </div>
+          <div class="today-foods">
+            <strong>今日吃了什麼</strong>
+            ${
+              entries.length
+                ? entries.slice(-3).reverse().map((entry) => `
+                    <p>
+                      <span>${escapeHtml(entry.food_name)}</span>
+                      <em>${Math.round(entry.calories)} kcal · P${Math.round(entry.protein_g)} F${Math.round(entry.fat_g)} C${Math.round(entry.carbs_g)}</em>
+                    </p>
+                  `).join("")
+                : `<p><span>尚無紀錄</span><em>學員上傳後 30 秒內會自動刷新</em></p>`
+            }
           </div>
         </article>
       `;
@@ -166,7 +192,9 @@ function renderMembers() {
 
   document.querySelectorAll(".member").forEach((node) => {
     node.addEventListener("click", () => {
+      state.selectedName = node.dataset.name;
       fillEditor(node.dataset.name);
+      renderMembers();
       loadWeeklyReview().catch(showError);
     });
   });
@@ -315,6 +343,7 @@ async function saveUserValues() {
 function fillEditor(name) {
   const user = state.users.find((item) => item.display_name === name);
   if (!user) return;
+  state.selectedName = user.display_name;
   els.editName.value = user.display_name;
   els.grantName.value = user.display_name;
   els.editCalories.value = Math.round(user.goal_calories);
@@ -429,6 +458,21 @@ function accessText(user) {
   if (!user.access_expires_at) return "未啟用";
   if (user.access_expires_at <= Date.now()) return "已到期";
   return `到期 ${new Date(user.access_expires_at).toLocaleDateString("zh-TW")}`;
+}
+
+function macroTile(label, current, goal, unit, kind) {
+  const safeGoal = Math.max(Number(goal) || 0, 1);
+  const value = Number(current) || 0;
+  const percent = Math.min(140, Math.round((value / safeGoal) * 100));
+  const over = value > safeGoal;
+  return `
+    <div class="macro-tile ${kind} ${over ? "over" : ""}">
+      <span>${label}</span>
+      <strong>${Math.round(value)}<small>${unit}</small></strong>
+      <em>/ ${Math.round(safeGoal)}${unit}</em>
+      <i style="--p:${percent}%"></i>
+    </div>
+  `;
 }
 
 function bodyText(user) {

@@ -19,6 +19,7 @@ import {
   getCheckoutSessionByState,
   grantAccess,
   getDailyTotals,
+  getDailyEntries,
   getEntriesInDateRange,
   getUser,
   listUsersForCoachKeys,
@@ -310,6 +311,7 @@ app.get("/api/admin/summary", (req, res) => {
     student_quota: user.student_quota,
     coach_owner_id: user.coach_owner_id,
     today_totals: getDailyTotals(user.line_user_id, today),
+    today_entries: getDailyEntries(user.line_user_id, today),
   }));
 
   res.json({
@@ -467,9 +469,9 @@ app.post("/api/admin/grant", (req, res) => {
       res.status(403).json({ error: "Student subscription cannot exceed coach access period" });
       return;
     }
-    const coachKey = admin.coachKeys[0];
-    const alreadyOwned = user.coach_owner_id === coachKey;
-    const used = countStudentsForCoachKey(coachKey);
+    const coachKey = admin.primaryCoachKey;
+    const alreadyOwned = admin.coachKeys.includes(user.coach_owner_id || "");
+    const used = admin.coachKeys.reduce((total, key) => total + countStudentsForCoachKey(key), 0);
     if (!alreadyOwned && used >= admin.studentQuota) {
       res.status(403).json({ error: `Student quota is full: ${used}/${admin.studentQuota}` });
       return;
@@ -901,6 +903,7 @@ type AdminContext =
   | {
       kind: "coach";
       coachKeys: string[];
+      primaryCoachKey: string;
       coachName: string;
       studentQuota: number;
       expiresAt: number | null;
@@ -921,9 +924,15 @@ function getAdminContext(req: express.Request): AdminContext | undefined {
     return undefined;
   }
 
+  const pinKey = coachKeyForPin(coachAccess.pin);
+  const coachKeys = coachAccess.claimed_line_user_id
+    ? [coachAccess.claimed_line_user_id, pinKey]
+    : [pinKey];
+
   return {
     kind: "coach",
-    coachKeys: [coachAccess.claimed_line_user_id || coachKeyForPin(coachAccess.pin)],
+    coachKeys,
+    primaryCoachKey: coachAccess.claimed_line_user_id || pinKey,
     coachName: coachAccess.coach_name,
     studentQuota: coachAccess.student_quota,
     expiresAt: coachAccess.expires_at,

@@ -10,6 +10,8 @@
   --amber: #f0a33a;
   --rose: #d95f4c;
   --blue: #5078d3;
+  --violet: #7a6ad8;
+  --cyan: #168aa5;
   --soft: #eaf7f1;
   --warn: #fff2d8;
 }
@@ -262,10 +264,8 @@ summary {
 
 .member {
   display: grid;
-  grid-template-columns: 1.1fr 1fr 1fr;
   gap: 14px;
-  align-items: center;
-  padding: 14px;
+  padding: 16px;
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -277,16 +277,133 @@ summary {
   transform: translateY(-1px);
 }
 
+.member.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(6, 166, 106, 0.12);
+}
+
+.member-main {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .name {
   font-weight: 900;
 }
 
-.meta,
-.macro,
-.access {
+.meta {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.macro-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.macro-tile {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  overflow: hidden;
+  min-height: 104px;
+  border: 1px solid #e3e8e5;
+  border-radius: 8px;
+  background: #fbfcfb;
+  padding: 12px;
+}
+
+.macro-tile span,
+.macro-tile em,
+.macro-tile small {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.macro-tile strong {
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.macro-tile i {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: block;
+  height: 5px;
+  background:
+    linear-gradient(90deg, currentColor var(--p), #edf1ef var(--p));
+}
+
+.macro-tile.calories {
+  color: var(--accent);
+}
+
+.macro-tile.protein {
+  color: var(--blue);
+}
+
+.macro-tile.fat {
+  color: var(--amber);
+}
+
+.macro-tile.carbs {
+  color: var(--violet);
+}
+
+.macro-tile.over {
+  color: var(--rose);
+  border-color: #efc5bd;
+  background: #fff7f5;
+}
+
+.macro-tile.over strong,
+.macro-tile.over span {
+  color: var(--rose);
+}
+
+.today-foods {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.today-foods strong {
+  font-size: 13px;
+}
+
+.today-foods p {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  border-radius: 8px;
+  background: #f8faf9;
+  padding: 9px 10px;
+}
+
+.today-foods span,
+.today-foods em {
+  font-size: 13px;
+}
+
+.today-foods span {
+  font-weight: 800;
+}
+
+.today-foods em {
+  color: var(--muted);
+  font-style: normal;
+  text-align: right;
 }
 
 .badge {
@@ -566,7 +683,6 @@ label {
   .guide-grid,
   .metrics,
   .workspace,
-  .member,
   .field-grid,
   .week-summary,
   .day-head,
@@ -584,5 +700,14 @@ label {
   .week-panel {
     grid-row: auto;
     grid-column: auto;
+  }
+
+  .macro-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .today-foods p {
+    align-items: start;
+    flex-direction: column;
   }
 }

@@ -753,3 +753,9 @@ export function createPaymentRecord(input: {
   });
   return db.prepare("SELECT * FROM payments WHERE id = ?").get(input.id) as PaymentRecord;
 }
+
+export function listPayments(limit = 80): PaymentRecord[] {
+  return db
+    .prepare("SELECT * FROM payments ORDER BY created_at DESC LIMIT ?")
+    .all(Math.max(1, Math.min(limit, 200))) as PaymentRecord[];
+}

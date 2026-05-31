@@ -1,206 +1,141 @@
 const state = {
   users: [],
+  payments: [],
   mode: "owner",
   coach: null,
-  weekly: null,
   selectedName: "",
+  weekly: null,
 };
 
+const $ = (selector) => document.querySelector(selector);
 const els = {
-  pin: document.querySelector("#pin"),
-  refresh: document.querySelector("#refresh"),
-  totalUsers: document.querySelector("#totalUsers"),
-  coachInfo: document.querySelector("#coachInfo"),
-  activeUsers: document.querySelector("#activeUsers"),
-  coachUsers: document.querySelector("#coachUsers"),
-  today: document.querySelector("#today"),
-  members: document.querySelector("#members"),
-  search: document.querySelector("#search"),
-  grantName: document.querySelector("#grantName"),
-  grantRole: document.querySelector("#grantRole"),
-  studentQuota: document.querySelector("#studentQuota"),
-  grantDuration: document.querySelector("#grantDuration"),
-  grant: document.querySelector("#grant"),
-  notice: document.querySelector("#notice"),
-  editName: document.querySelector("#editName"),
-  editCalories: document.querySelector("#editCalories"),
-  editProtein: document.querySelector("#editProtein"),
-  editFat: document.querySelector("#editFat"),
-  editCarbs: document.querySelector("#editCarbs"),
-  editSex: document.querySelector("#editSex"),
-  editAge: document.querySelector("#editAge"),
-  editHeight: document.querySelector("#editHeight"),
-  editWeight: document.querySelector("#editWeight"),
-  saveUser: document.querySelector("#saveUser"),
-  tabs: document.querySelectorAll(".tab"),
-  panels: document.querySelectorAll(".tab-panel"),
-  guideCards: document.querySelectorAll(".guide-card"),
-  guideOutput: document.querySelector("#guideOutput"),
-  loadWeek: document.querySelector("#loadWeek"),
-  weekSummary: document.querySelector("#weekSummary"),
-  trend: document.querySelector("#trend"),
-  dayPicker: document.querySelector("#dayPicker"),
-  dayEntries: document.querySelector("#dayEntries"),
-  coachPinName: document.querySelector("#coachPinName"),
-  coachPinDuration: document.querySelector("#coachPinDuration"),
-  coachPinQuota: document.querySelector("#coachPinQuota"),
-  copyCoachCommand: document.querySelector("#copyCoachCommand"),
-  coachCommand: document.querySelector("#coachCommand"),
+  pin: $("#pin"),
+  refresh: $("#refresh"),
+  modeLine: $("#modeLine"),
+  totalUsers: $("#totalUsers"),
+  activeUsers: $("#activeUsers"),
+  coachUsers: $("#coachUsers"),
+  entryCount: $("#entryCount"),
+  revenue: $("#revenue"),
+  attentionList: $("#attentionList"),
+  focusTitle: $("#focusTitle"),
+  focusText: $("#focusText"),
+  search: $("#search"),
+  peopleList: $("#peopleList"),
+  grantName: $("#grantName"),
+  grantRole: $("#grantRole"),
+  grantDuration: $("#grantDuration"),
+  studentQuota: $("#studentQuota"),
+  grant: $("#grant"),
+  notice: $("#notice"),
+  coachPinName: $("#coachPinName"),
+  coachPinDuration: $("#coachPinDuration"),
+  coachPinQuota: $("#coachPinQuota"),
+  copyCoachCommand: $("#copyCoachCommand"),
+  coachCommand: $("#coachCommand"),
+  editName: $("#editName"),
+  editCalories: $("#editCalories"),
+  editProtein: $("#editProtein"),
+  editFat: $("#editFat"),
+  editCarbs: $("#editCarbs"),
+  editSex: $("#editSex"),
+  editAge: $("#editAge"),
+  editHeight: $("#editHeight"),
+  editWeight: $("#editWeight"),
+  saveUser: $("#saveUser"),
+  loadWeek: $("#loadWeek"),
+  usageList: $("#usageList"),
+  weekSummary: $("#weekSummary"),
+  trend: $("#trend"),
+  dayPicker: $("#dayPicker"),
+  dayEntries: $("#dayEntries"),
 };
 
 const initialParams = new URLSearchParams(window.location.search);
 els.pin.value = initialParams.get("pin") || localStorage.getItem("hermesAdminPin") || "";
+document.querySelectorAll(".tab").forEach((tab) => tab.addEventListener("click", () => activateTab(tab.dataset.tab)));
 els.refresh.addEventListener("click", () => loadSummary().catch(showError));
 els.pin.addEventListener("keydown", (event) => {
   if (event.key === "Enter") loadSummary().catch(showError);
 });
-els.search.addEventListener("input", renderMembers);
+els.search.addEventListener("input", renderPeople);
 els.grant.addEventListener("click", grantAccess);
 els.saveUser.addEventListener("click", saveUserValues);
-els.loadWeek.addEventListener("click", () => loadWeeklyReview().catch(showError));
 els.copyCoachCommand.addEventListener("click", buildCoachPinCommand);
-els.tabs.forEach((tab) => tab.addEventListener("click", () => activateTab(tab.dataset.tab)));
-els.guideCards.forEach((card) =>
-  card.addEventListener("click", () => {
-    els.guideOutput.textContent = card.dataset.template;
-    navigator.clipboard?.writeText(card.dataset.template).catch(() => {});
-  }),
-);
+els.loadWeek.addEventListener("click", () => loadWeeklyReview().catch(showError));
 
-if (initialParams.get("tab")) {
-  activateTab(initialParams.get("tab"));
-}
-
+if (initialParams.get("tab")) activateTab(initialParams.get("tab"));
 loadSummary().catch(showError);
 setInterval(() => {
-  if (document.visibilityState === "visible" && els.pin.value) {
-    loadSummary({ silent: true }).catch(() => {});
-  }
+  if (!document.hidden && els.pin.value) loadSummary({ silent: true }).catch(() => {});
 }, 30000);
 
 async function loadSummary(options = {}) {
   localStorage.setItem("hermesAdminPin", els.pin.value);
   if (!options.silent) setNotice("載入中...");
-  if (!options.silent) setMetrics("-");
   const data = await apiGet("/api/admin/summary");
-  state.users = data.users;
+  state.users = data.users || [];
+  state.payments = data.payments || [];
   state.mode = data.mode || "owner";
   state.coach = data.coach || null;
+  if (!state.selectedName && state.users.length) state.selectedName = state.users[0].display_name;
+
   els.totalUsers.textContent = data.totals.users;
   els.activeUsers.textContent = data.totals.active;
   els.coachUsers.textContent = data.totals.coaches;
-  els.today.textContent = data.today.replaceAll("-", "/");
-  renderMembers();
-  renderCoachInfo();
+  els.entryCount.textContent = data.totals.entries_7d || 0;
+  els.revenue.textContent = `NT$${data.totals.revenue_test_twd || 0}`;
+  els.modeLine.textContent =
+    state.mode === "coach" && state.coach
+      ? `你好！${state.coach.name} 教練 · 名額 ${state.coach.student_quota} 人 · ${accessText(state.coach)}`
+      : "Jasper 管理員模式 · 可查看全部教練、學員與一般付費者";
+
+  renderOverview();
+  renderPeople();
+  renderUsage();
   renderAccessControls();
-  if (!state.selectedName && state.users.length) {
-    state.selectedName = state.users[0].display_name;
-  }
-  if (!options.silent) {
-    setNotice(`已載入 ${data.totals.users} 位成員。${state.mode === "coach" ? "目前是教練管理模式。" : ""}`);
-  }
+  if (!options.silent) setNotice(`已載入 ${state.users.length} 位成員。`);
 }
 
 function activateTab(tabName) {
-  els.tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === tabName));
-  els.panels.forEach((panel) => panel.classList.toggle("active", panel.id === `${tabName}Panel`));
+  document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === tabName));
+  document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tabName}Panel`));
 }
 
-function renderCoachInfo() {
-  if (state.mode !== "coach" || !state.coach) {
-    els.coachInfo.hidden = true;
-    els.coachInfo.innerHTML = "";
-    return;
-  }
-  const expiry = state.coach.permanent_access
-    ? "永久"
-    : state.coach.expires_at
-      ? `到期 ${new Date(state.coach.expires_at).toLocaleDateString("zh-TW")}`
-      : "未啟用";
-  const maxGrant =
-    state.coach.max_grant_days === null
-      ? "可發 7 天、30 天、一年"
-      : state.coach.max_grant_days >= 365
-        ? "可發 7 天、30 天、一年"
-        : state.coach.max_grant_days >= 30
-          ? "可發 7 天、30 天"
-          : state.coach.max_grant_days >= 7
-            ? "可發 7 天"
-            : "目前不可發新權限";
-  els.coachInfo.hidden = false;
-  els.coachInfo.innerHTML = `
-    <span>你好！${escapeHtml(state.coach.name)} 教練</span>
-    <strong>${expiry}</strong>
-    <small>學員名額 ${state.coach.student_quota} 人 · ${maxGrant}</small>
+function renderOverview() {
+  const expired = state.users.filter((user) => !isActive(user));
+  const overToday = state.users.filter((user) => user.today_totals?.calories > user.goal_calories);
+  const noRecent = state.users.filter((user) => (user.usage?.entries_7d || 0) === 0 && isActive(user));
+  els.focusTitle.textContent = `${expired.length + overToday.length + noRecent.length} 件需要注意`;
+  els.focusText.textContent = "優先處理到期、今日超標、以及 7 天沒有紀錄的使用者。";
+
+  const items = [
+    ...expired.slice(0, 4).map((user) => attentionItem(user, "權限到期", accessText(user))),
+    ...overToday.slice(0, 4).map((user) => attentionItem(user, "今日超標", `${round(user.today_totals.calories)} / ${round(user.goal_calories)} kcal`)),
+    ...noRecent.slice(0, 4).map((user) => attentionItem(user, "7 天無紀錄", "可提醒回 LINE 記錄")),
+  ];
+  els.attentionList.innerHTML = items.length ? items.join("") : `<div class="empty">目前沒有急件。可以查看成員或使用程度。</div>`;
+}
+
+function attentionItem(user, label, detail) {
+  return `
+    <button class="attention-item" data-name="${escapeHtml(user.display_name)}" type="button">
+      <strong>${escapeHtml(user.display_name)}</strong>
+      <span>${label}</span>
+      <em>${detail}</em>
+    </button>
   `;
 }
 
-function renderMembers() {
+function renderPeople() {
   const query = els.search.value.trim().toLowerCase();
   const users = state.users.filter((user) => user.display_name.toLowerCase().includes(query));
-  if (!users.length) {
-    els.members.innerHTML = `
-      <div class="empty">
-        <strong>目前沒有可顯示的成員</strong>
-        <span>如果剛進來是空的，請先輸入管理 PIN 後按「更新」。</span>
-      </div>
-    `;
-    return;
-  }
+  els.peopleList.innerHTML = users.length
+    ? users.map(personCard).join("")
+    : `<div class="empty">沒有符合的成員。</div>`;
 
-  els.members.innerHTML = users
-    .map((user) => {
-      const role = user.role === "owner" ? "最高權限" : user.role === "coach" ? "教練" : "學員";
-      const active = isActive(user);
-      const totals = user.today_totals;
-      const entries = user.today_entries || [];
-      const quota = user.role === "coach" ? ` · 名額 ${user.student_quota || 0} 人` : "";
-      const ownerLabel = user.coach_owner_id ? "教練學員" : "個人訂閱";
-      const selected = user.display_name === state.selectedName;
-      const canDelete = state.mode === "owner" && user.role !== "owner";
-      return `
-        <article class="member ${selected ? "selected" : ""}" data-name="${escapeHtml(user.display_name)}">
-          <div class="member-main">
-            <div>
-              <div class="name">${escapeHtml(user.display_name)}</div>
-              <div class="meta">${role} · ${ownerLabel} · ${accessText(user)}${quota}</div>
-            </div>
-            <div class="member-actions">
-              <span class="badge ${active ? "" : "warn"}">${active ? "可使用" : "未啟用"}</span>
-              ${canDelete ? `<button class="delete-member" data-name="${escapeHtml(user.display_name)}" type="button">刪除</button>` : ""}
-            </div>
-          </div>
-          <div class="macro-grid">
-            ${macroTile("熱量", totals.calories, user.goal_calories, "kcal", "calories")}
-            ${macroTile("蛋白", totals.protein_g, user.goal_protein_g, "g", "protein")}
-            ${macroTile("脂肪", totals.fat_g, user.goal_fat_g, "g", "fat")}
-            ${macroTile("碳水", totals.carbs_g, user.goal_carbs_g, "g", "carbs")}
-          </div>
-          <div class="today-foods">
-            <strong>今日吃了什麼</strong>
-            ${
-              entries.length
-                ? entries.slice(-3).reverse().map((entry) => `
-                    <p>
-                      <span>${escapeHtml(entry.food_name)}</span>
-                      <em>${Math.round(entry.calories)} kcal · P${Math.round(entry.protein_g)} F${Math.round(entry.fat_g)} C${Math.round(entry.carbs_g)}</em>
-                    </p>
-                  `).join("")
-                : `<p><span>尚無紀錄</span><em>學員上傳後 30 秒內會自動刷新</em></p>`
-            }
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-
-  document.querySelectorAll(".member").forEach((node) => {
-    node.addEventListener("click", () => {
-      state.selectedName = node.dataset.name;
-      fillEditor(node.dataset.name);
-      renderMembers();
-      loadWeeklyReview().catch(showError);
-    });
+  document.querySelectorAll("[data-name]").forEach((node) => {
+    node.addEventListener("click", () => selectUser(node.dataset.name));
   });
   document.querySelectorAll(".delete-member").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -210,97 +145,107 @@ function renderMembers() {
   });
 }
 
+function personCard(user) {
+  const canDelete = state.mode === "owner" && user.role !== "owner";
+  return `
+    <article class="person-card ${state.selectedName === user.display_name ? "selected" : ""}" data-name="${escapeHtml(user.display_name)}">
+      <div class="person-head">
+        <div>
+          <strong>${escapeHtml(user.display_name)}</strong>
+          <span>${roleLabel(user)} · ${accessText(user)}${user.role === "coach" ? ` · 名額 ${user.student_quota || 0}` : ""}</span>
+        </div>
+        <div class="person-actions">
+          <b class="${isActive(user) ? "ok" : "warn"}">${isActive(user) ? "可使用" : "停用/到期"}</b>
+          ${canDelete ? `<button class="delete-member" data-name="${escapeHtml(user.display_name)}" type="button">刪除</button>` : ""}
+        </div>
+      </div>
+      <div class="macro-row">
+        ${macroMini("熱量", user.today_totals.calories, user.goal_calories, "kcal")}
+        ${macroMini("蛋白", user.today_totals.protein_g, user.goal_protein_g, "g")}
+        ${macroMini("脂質", user.today_totals.fat_g, user.goal_fat_g, "g")}
+        ${macroMini("碳水", user.today_totals.carbs_g, user.goal_carbs_g, "g")}
+      </div>
+      <div class="food-strip">
+        ${(user.today_entries || []).slice(-2).reverse().map((entry) => `<span>${escapeHtml(entry.food_name)} · ${round(entry.calories)} kcal</span>`).join("") || "<span>今日尚無紀錄</span>"}
+      </div>
+    </article>
+  `;
+}
+
+function renderUsage() {
+  const rows = [...state.users].sort((a, b) => (b.usage?.entries_7d || 0) - (a.usage?.entries_7d || 0));
+  els.usageList.innerHTML = rows.length
+    ? rows.map((user) => `
+      <button class="usage-row" data-name="${escapeHtml(user.display_name)}" type="button">
+        <strong>${escapeHtml(user.display_name)}</strong>
+        <span>${roleLabel(user)}</span>
+        <span>${user.usage?.entries_7d || 0} 筆</span>
+        <span>${round(user.usage?.calories_7d || 0)} kcal</span>
+        <span>${accessText(user)}</span>
+      </button>
+    `).join("")
+    : `<div class="empty">尚無資料。</div>`;
+  els.usageList.querySelectorAll("[data-name]").forEach((node) => {
+    node.addEventListener("click", () => {
+      selectUser(node.dataset.name);
+      loadWeeklyReview().catch(showError);
+    });
+  });
+}
+
 async function loadWeeklyReview() {
-  const name = els.editName.value.trim() || state.users[0]?.display_name || "";
+  const name = state.selectedName || els.editName.value.trim();
   if (!name) {
-    setNotice("請先選擇一位學員。", true);
+    setNotice("請先選擇一位成員。", true);
     return;
   }
   const data = await apiGet(`/api/admin/weekly?name=${encodeURIComponent(name)}`);
   state.weekly = data;
-  renderWeeklyReview(data);
+  renderWeekly(data);
 }
 
-function renderWeeklyReview(data) {
-  const surplus = Math.round(data.week_totals.surplus_calories);
-  const surplusText = surplus >= 0 ? `盈餘 ${surplus} kcal` : `赤字 ${Math.abs(surplus)} kcal`;
+function renderWeekly(data) {
+  const balance = Math.round(-data.week_totals.surplus_calories);
   els.weekSummary.innerHTML = `
-    <div><span>區間</span><strong>${formatShortDate(data.start_date)} - ${formatShortDate(data.end_date)}</strong></div>
-    <div><span>本週熱量</span><strong>${Math.round(data.week_totals.calories)} kcal</strong></div>
-    <div><span>熱量盈虧</span><strong class="${surplus >= 0 ? "surplus" : "deficit"}">${surplusText}</strong></div>
-    <div><span>三大營養素</span><strong>P${Math.round(data.week_totals.protein_g)} F${Math.round(data.week_totals.fat_g)} C${Math.round(data.week_totals.carbs_g)}</strong></div>
+    <article><span>區間</span><strong>${shortDate(data.start_date)} - ${shortDate(data.end_date)}</strong></article>
+    <article><span>總熱量</span><strong>${round(data.week_totals.calories)} kcal</strong></article>
+    <article><span>週赤字</span><strong>${balanceText(balance)}</strong></article>
+    <article><span>三大營養素</span><strong>P${round(data.week_totals.protein_g)} F${round(data.week_totals.fat_g)} C${round(data.week_totals.carbs_g)}</strong></article>
   `;
-  renderTrend(data);
-  renderDayPicker(data);
-  renderDayEntries(data.days[data.days.length - 1]);
-}
-
-function renderTrend(data) {
-  const maxValue = Math.max(data.user.goal_calories, ...data.days.map((day) => day.totals.calories), 1);
-  els.trend.innerHTML = data.days
-    .map((day) => {
-      const height = Math.max(8, Math.round((day.totals.calories / maxValue) * 100));
-      const over = day.totals.calories > data.user.goal_calories;
-      return `
-        <button class="bar ${over ? "over" : ""}" data-date="${day.date}" style="--h:${height}%">
-          <span>${Math.round(day.totals.calories)}</span>
-          <small>${weekday(day.date)}</small>
-        </button>
-      `;
-    })
-    .join("");
-  els.trend.querySelectorAll(".bar").forEach((bar) => {
-    bar.addEventListener("click", () => {
-      const day = data.days.find((item) => item.date === bar.dataset.date);
-      if (day) renderDayEntries(day);
-    });
+  const max = Math.max(data.user.goal_calories, ...data.days.map((day) => day.totals.calories), 1);
+  els.trend.innerHTML = data.days.map((day) => {
+    const height = Math.max(8, Math.round((day.totals.calories / max) * 100));
+    const over = day.totals.calories > data.user.goal_calories;
+    return `<button class="${over ? "over" : ""}" data-date="${day.date}" style="--h:${height}%" type="button"><i></i><span>${round(day.totals.calories)}</span><small>${weekday(day.date)}</small></button>`;
+  }).join("");
+  els.dayPicker.innerHTML = data.days.map((day) => `<button data-date="${day.date}" type="button">${shortDate(day.date)}<span>${round(day.totals.calories)} kcal</span></button>`).join("");
+  [...els.trend.querySelectorAll("button"), ...els.dayPicker.querySelectorAll("button")].forEach((button) => {
+    button.addEventListener("click", () => renderDayEntries(data.days.find((day) => day.date === button.dataset.date)));
   });
-}
-
-function renderDayPicker(data) {
-  els.dayPicker.innerHTML = data.days
-    .map(
-      (day) => `
-        <button data-date="${day.date}">
-          ${formatShortDate(day.date)}
-          <span>${Math.round(day.totals.calories)} kcal</span>
-        </button>
-      `,
-    )
-    .join("");
-  els.dayPicker.querySelectorAll("button").forEach((button) => {
-    button.addEventListener("click", () => {
-      const day = data.days.find((item) => item.date === button.dataset.date);
-      if (day) renderDayEntries(day);
-    });
-  });
+  renderDayEntries(data.days.at(-1));
 }
 
 function renderDayEntries(day) {
-  if (!day) return;
-  const surplus = Math.round(day.surplus_calories);
-  els.dayEntries.innerHTML = `
-    <div class="day-head">
-      <strong>${formatShortDate(day.date)}</strong>
-      <span>${Math.round(day.totals.calories)} kcal / P${Math.round(day.totals.protein_g)} F${Math.round(day.totals.fat_g)} C${Math.round(day.totals.carbs_g)}</span>
-      <em>${surplus >= 0 ? `盈餘 ${surplus}` : `赤字 ${Math.abs(surplus)}`} kcal</em>
-    </div>
-    ${
-      day.entries.length
-        ? day.entries
-            .map(
-              (entry) => `
-                <article class="food-entry">
-                  <strong>${escapeHtml(entry.food_name)}</strong>
-                  <span>${Math.round(entry.calories)} kcal · P${Math.round(entry.protein_g)} F${Math.round(entry.fat_g)} C${Math.round(entry.carbs_g)}</span>
-                  <small>${escapeHtml(entry.notes || entry.source)}</small>
-                </article>
-              `,
-            )
-            .join("")
-        : `<div class="empty compact"><strong>這天沒有紀錄</strong><span>學員可在 LINE 傳照片或「紀錄文字」。</span></div>`
-    }
-  `;
+  els.dayEntries.innerHTML = day.entries.length
+    ? day.entries.map((entry) => `<article><strong>${escapeHtml(entry.food_name)}</strong><span>${round(entry.calories)} kcal · P${round(entry.protein_g)} F${round(entry.fat_g)} C${round(entry.carbs_g)}</span><small>${escapeHtml(entry.notes || entry.source)}</small></article>`).join("")
+    : `<div class="empty">${shortDate(day.date)} 沒有紀錄。</div>`;
+}
+
+function selectUser(name) {
+  const user = state.users.find((item) => item.display_name === name);
+  if (!user) return;
+  state.selectedName = user.display_name;
+  els.grantName.value = user.display_name;
+  els.editName.value = user.display_name;
+  els.editCalories.value = round(user.goal_calories);
+  els.editProtein.value = round(user.goal_protein_g);
+  els.editFat.value = round(user.goal_fat_g);
+  els.editCarbs.value = round(user.goal_carbs_g);
+  els.editSex.value = user.sex || "";
+  els.editAge.value = user.age || "";
+  els.editHeight.value = user.height_cm || "";
+  els.editWeight.value = user.weight_kg || "";
+  renderPeople();
 }
 
 async function grantAccess() {
@@ -308,20 +253,13 @@ async function grantAccess() {
     pin: els.pin.value,
     name: els.grantName.value.trim(),
     role: els.grantRole.value,
-    studentQuota: Number(els.studentQuota.value || 10),
     duration: els.grantDuration.value,
+    studentQuota: Number(els.studentQuota.value || 10),
   };
-  if (!body.name) {
-    setNotice("請輸入成員姓名。", true);
-    return;
-  }
-  try {
-    await apiPost("/api/admin/grant", body);
-    setNotice("授權已更新。");
-    await loadSummary();
-  } catch (error) {
-    showError(error);
-  }
+  if (!body.name) return setNotice("請輸入成員姓名。", true);
+  await apiPost("/api/admin/grant", body);
+  setNotice("權限已更新。");
+  await loadSummary();
 }
 
 async function saveUserValues() {
@@ -337,55 +275,23 @@ async function saveUserValues() {
     height: optionalNumber(els.editHeight.value),
     weight: optionalNumber(els.editWeight.value),
   };
-  if (!body.name) {
-    setNotice("請輸入學員姓名。", true);
-    return;
-  }
-  try {
-    await apiPost("/api/admin/update-user", body);
-    setNotice("學員數值已更新。");
-    await loadSummary();
-  } catch (error) {
-    showError(error);
-  }
+  if (!body.name) return setNotice("請輸入成員姓名。", true);
+  await apiPost("/api/admin/update-user", body);
+  setNotice("目標與身體資料已更新。");
+  await loadSummary();
 }
 
 async function deleteMember(name) {
-  if (!name) return;
-  const confirmed = window.confirm(`確定要刪除「${name}」嗎？\n\n教練被刪除時，名下學員會解除綁定但不會一起刪除。`);
-  if (!confirmed) {
-    return;
-  }
+  if (!window.confirm(`確定刪除「${name}」嗎？\n教練被刪除時，名下學員只會解除綁定。`)) return;
   await apiPost("/api/admin/delete-user", { name });
-  if (state.selectedName === name) {
-    state.selectedName = "";
-    els.editName.value = "";
-  }
+  if (state.selectedName === name) state.selectedName = "";
   setNotice(`已刪除 ${name}。`);
   await loadSummary();
 }
 
-function fillEditor(name) {
-  const user = state.users.find((item) => item.display_name === name);
-  if (!user) return;
-  state.selectedName = user.display_name;
-  els.editName.value = user.display_name;
-  els.grantName.value = user.display_name;
-  els.editCalories.value = Math.round(user.goal_calories);
-  els.editProtein.value = Math.round(user.goal_protein_g);
-  els.editFat.value = Math.round(user.goal_fat_g);
-  els.editCarbs.value = Math.round(user.goal_carbs_g);
-  els.editSex.value = user.sex || "";
-  els.editAge.value = user.age || "";
-  els.editHeight.value = user.height_cm || "";
-  els.editWeight.value = user.weight_kg || "";
-}
-
 function buildCoachPinCommand() {
   const name = els.coachPinName.value.trim() || "Coach";
-  const duration = els.coachPinDuration.value;
-  const quota = Number(els.coachPinQuota.value || 10);
-  const command = `產生教練PIN ${name} ${duration} ${quota}人`;
+  const command = `產生教練PIN ${name} ${els.coachPinDuration.value} ${Number(els.coachPinQuota.value || 10)}人`;
   els.coachCommand.textContent = command;
   navigator.clipboard?.writeText(command).catch(() => {});
 }
@@ -404,70 +310,36 @@ function renderAccessControls() {
         option.value === "disabled" ||
         (typeof maxDays === "number" && days !== null && days > maxDays));
   });
-  if (isCoach && els.grantDuration.selectedOptions[0]?.disabled) {
-    const firstAllowed = [...els.grantDuration.options].find((option) => !option.disabled);
-    els.grantDuration.value = firstAllowed?.value || "7";
-  }
 }
 
 async function apiGet(path) {
   const separator = path.includes("?") ? "&" : "?";
-  const res = await fetch(`${path}${separator}pin=${encodeURIComponent(els.pin.value)}`);
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const response = await fetch(`${path}${separator}pin=${encodeURIComponent(els.pin.value)}`);
+  if (!response.ok) throw new Error(await friendlyError(response));
+  return response.json();
 }
 
 async function apiPost(path, body) {
-  const res = await fetch(path, {
+  const response = await fetch(path, {
     method: "POST",
     headers: { "content-type": "application/json", "x-admin-pin": els.pin.value },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    throw new Error(await friendlyError(res));
-  }
-  return res.json();
+  if (!response.ok) throw new Error(await friendlyError(response));
+  return response.json();
 }
 
-async function friendlyError(res) {
-  const text = await res.text();
-  let serverMessage = text;
+async function friendlyError(response) {
+  const text = await response.text();
   try {
-    serverMessage = JSON.parse(text).error || text;
+    return JSON.parse(text).error || text;
   } catch {
-    serverMessage = text;
+    return response.status === 401 ? "PIN 不正確，請確認管理 PIN 或教練 PIN。" : text;
   }
-  if (res.status === 401) {
-    return "管理 PIN 不正確，請輸入 Render 裡的 ADMIN_PIN 後按更新。";
-  }
-  if (res.status === 404) {
-    return "找不到這位成員。請確認 LINE 裡的設定姓名是否一致。";
-  }
-  if (res.status === 403) {
-    return serverMessage || "權限不足。教練只能管理自己名下的學員，且不能給永久權限。";
-  }
-  return serverMessage || `載入失敗：${res.status}`;
 }
 
 function showError(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  setNotice(message || "載入失敗，請確認服務是否正常。", true);
-  if (!state.users.length) {
-    setMetrics("-");
-    els.members.innerHTML = `
-      <div class="empty">
-        <strong>資料尚未載入</strong>
-        <span>${escapeHtml(message)}</span>
-      </div>
-    `;
-  }
-}
-
-function setMetrics(value) {
-  els.totalUsers.textContent = value;
-  els.activeUsers.textContent = value;
-  els.coachUsers.textContent = value;
-  els.today.textContent = value;
+  setNotice(error instanceof Error ? error.message : String(error), true);
 }
 
 function setNotice(message, isError = false) {
@@ -475,53 +347,48 @@ function setNotice(message, isError = false) {
   els.notice.classList.toggle("error", isError);
 }
 
+function roleLabel(user) {
+  if (user.role === "owner") return "最高權限";
+  if (user.role === "coach") return "教練";
+  return user.coach_owner_id ? "教練學員" : "一般學員";
+}
+
 function isActive(user) {
-  return (
-    user.role === "owner" ||
-    user.role === "coach" ||
-    user.permanent_access ||
-    (user.access_expires_at && user.access_expires_at > Date.now())
-  );
+  return user.role === "owner" || user.role === "coach" || user.permanent_access || (user.access_expires_at && user.access_expires_at > Date.now());
 }
 
 function accessText(user) {
   if (user.role === "owner" || user.permanent_access) return "永久";
-  if (!user.access_expires_at) return "未啟用";
-  if (user.access_expires_at <= Date.now()) return "已到期";
-  return `到期 ${new Date(user.access_expires_at).toLocaleDateString("zh-TW")}`;
+  const expires = user.access_expires_at || user.expires_at;
+  if (!expires) return "未開通";
+  if (expires <= Date.now()) return "已到期";
+  return `到期 ${new Date(expires).toLocaleDateString("zh-TW")}`;
 }
 
-function macroTile(label, current, goal, unit, kind) {
-  const safeGoal = Math.max(Number(goal) || 0, 1);
-  const value = Number(current) || 0;
-  const percent = Math.min(140, Math.round((value / safeGoal) * 100));
-  const over = value > safeGoal;
-  return `
-    <div class="macro-tile ${kind} ${over ? "over" : ""}">
-      <span>${label}</span>
-      <strong>${Math.round(value)}<small>${unit}</small></strong>
-      <em>/ ${Math.round(safeGoal)}${unit}</em>
-      <i style="--p:${percent}%"></i>
-    </div>
-  `;
+function macroMini(label, value, goal, unit) {
+  const over = value > goal;
+  return `<span class="${over ? "over" : ""}">${label}<b>${round(value)} / ${round(goal)}${unit}</b></span>`;
 }
 
-function bodyText(user) {
-  if (!user.sex || !user.age || !user.height_cm || !user.weight_kg) return "";
-  return `<br>${escapeHtml(user.sex)} ${Math.round(user.age)}歲 ${Math.round(user.height_cm)}cm ${Math.round(user.weight_kg)}kg`;
+function balanceText(value) {
+  const rounded = round(value);
+  return rounded >= 0 ? `赤字 ${rounded} kcal` : `盈餘 ${Math.abs(rounded)} kcal`;
 }
 
 function optionalNumber(value) {
-  if (value === "") return undefined;
-  return Number(value);
+  return value === "" ? undefined : Number(value);
 }
 
-function formatShortDate(date) {
+function shortDate(date) {
   return date.slice(5).replace("-", "/");
 }
 
 function weekday(date) {
   return new Date(`${date}T00:00:00+08:00`).toLocaleDateString("zh-TW", { weekday: "short" });
+}
+
+function round(value) {
+  return Math.round(Number(value) || 0);
 }
 
 function escapeHtml(value) {

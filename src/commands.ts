@@ -114,6 +114,10 @@ export async function handleTextMessage(
     return "請輸入：\n產生教練PIN 教練名稱 30天 20人\n\n例：教練名稱請換成真實教練名稱；同一位教練再次產生會沿用原 PIN 並延長期限。";
   }
 
+  if (command === "教練登入教學") {
+    return coachLoginPrompt();
+  }
+
   if (command === "教練授權教學") {
     return "請輸入：\n教練授權 學員姓名 30天\n\n提醒：學員要先在 LINE 傳「我是學員 姓名」建立資料，教練才找得到。";
   }
@@ -851,6 +855,7 @@ function isPublicCommand(command: string | undefined, text: string): boolean {
       "教練幫助",
       "教練登入",
       "教練區",
+      "教練登入教學",
       "我是學員",
       "我是教練",
       "付款說明",
@@ -1055,7 +1060,7 @@ function lineMainMenuMessage(): LineReplyMessage {
 function onboardingMenuMessage(): LineReplyMessage {
   return flexMenu("新手教學", "照這個順序走", "先確認身份，再設定目標，最後開始記錄飲食。", [
     messageButton("我是學員", "學員身份"),
-    messageButton("我是教練", "教練區"),
+    messageButton("我是教練", "教練登入教學"),
     messageButton("設定目標", "目標設定"),
     messageButton("身體資料", "身體資料教學"),
     messageButton("開始記錄", "開始記錄"),
@@ -1065,6 +1070,7 @@ function onboardingMenuMessage(): LineReplyMessage {
 function studentZoneMessage(user?: UserProfile): LineReplyMessage {
   if (user && hasActiveAccess(user)) {
     return flexMenu("學員區", `你好，${user.display_name}`, "你已經完成 LINE 身份綁定，可以直接開始記錄或查看進度。", [
+      uriButton("開啟使用者介面", appUrl()),
       messageButton("開始記錄", "開始記錄"),
       messageButton("今日進度", "今日"),
       messageButton("剩餘熱量", "剩餘"),
@@ -1084,12 +1090,12 @@ function studentZoneMessage(user?: UserProfile): LineReplyMessage {
 }
 
 function coachZoneMessage(): LineReplyMessage {
-  return flexMenu("教練區", "輸入姓名與 PIN", "拿到 Jasper 給你的 PIN 後，傳「教練區 教練名稱 PIN」，成功後會跳出管理台連結。", [
-    messageButton("登入教學", "教練區"),
+  return flexMenu("教練區", "教練入口", "試用教練可先建立身份；已購買或拿到 PIN 的教練，登入成功後會取得可點擊的管理台。", [
+    messageButton("教練登入教學", "教練登入教學"),
+    uriButton("教練介面", appUrl()),
+    uriButton("購買教練方案", checkoutUrl("coach_month")),
     messageButton("查看學員", "教練成員"),
     messageButton("授權學員", "教練授權教學"),
-    messageButton("調整目標", "教練設定教學"),
-    uriButton("教練管理台", adminUrl(undefined, "coach")),
   ]);
 }
 
@@ -1119,6 +1125,7 @@ function coachDashboardLinkMessage(coachName: string, pin: string, quota: number
       text: [`${coachName} 教練登入成功`, `學員名額：${quota} 人`, "請點下方按鈕進入教練管理台。"].join("\n"),
     },
     flexMenu("教練管理台", `你好！${coachName} 教練`, "已自動帶入 PIN，進去後可查看學員、授權與調整數值。", [
+      uriButton("開啟教練介面", appUrl()),
       uriButton("進入教練管理台", adminUrl(pin, "coach")),
       messageButton("查看學員", "教練成員"),
       messageButton("授權學員", "教練授權教學"),
@@ -1234,6 +1241,11 @@ function adminUrl(pin?: string, tab?: "student" | "coach" | "admin" | "billing")
   if (tab) params.set("tab", tab);
   const query = params.toString();
   return `${base}/admin/${query ? `?${query}` : ""}`;
+}
+
+function appUrl(): string {
+  const base = (config.baseUrl || "https://nutritionay1.onrender.com").replace(/\/+$/, "");
+  return `${base}/app/`;
 }
 
 function checkoutUrl(plan?: "student_month" | "student_year" | "coach_month" | "coach_year"): string {

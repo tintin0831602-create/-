@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hermes 使用者介面</title>
+    <link rel="stylesheet" href="/app/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section id="loginView" class="login-view">
+        <div class="login-copy">
+          <p class="eyebrow">Hermes Nutrition</p>
+          <h1>你的飲食紀錄，教練也看得懂。</h1>
+          <p>用 LINE 登入後，學員可以看今日與本週飲食；教練可以快速掃描名下學員的熱量與三大營養素。</p>
+          <a class="primary-link" href="/auth/line/app/start">使用 LINE 登入</a>
+          <small id="loginHint">登入後會回到這個畫面，並自動帶出資料庫中的紀錄。</small>
+        </div>
+        <div class="login-visual" aria-hidden="true">
+          <img src="/assets/feature-food-photo.jpg" alt="" />
+        </div>
+      </section>
+
+      <section id="dashboardView" class="dashboard" hidden>
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Hermes Nutrition</p>
+            <h1 id="welcomeTitle">營養儀表板</h1>
+            <p id="accessLine" class="muted">讀取中</p>
+          </div>
+          <div class="top-actions">
+            <a href="/checkout/" class="ghost-link">續約 / 付款</a>
+            <button id="logoutButton" type="button">登出</button>
+          </div>
+        </header>
+
+        <nav class="segment" aria-label="使用者分區">
+          <button class="active" data-view="student">我的飲食</button>
+          <button id="coachTab" data-view="coach" hidden>教練學員</button>
+        </nav>
+
+        <section id="studentView" class="view active">
+          <div class="hero-grid">
+            <article class="panel today-panel">
+              <div class="panel-head">
+                <div>
+                  <span>今日攝取</span>
+                  <h2 id="todayCalories">0 kcal</h2>
+                </div>
+                <strong id="todayBalance" class="balance">-</strong>
+              </div>
+              <div id="macroQuadrants" class="quadrants"></div>
+            </article>
+            <article class="panel day-panel">
+              <div class="panel-head">
+                <div>
+                  <span>當天飲食</span>
+                  <h2 id="selectedDate">今天</h2>
+                </div>
+                <strong id="dayBalance" class="balance">-</strong>
+              </div>
+              <div id="dayEntries" class="food-list"></div>
+            </article>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <span>一週飲食檢視</span>
+                <h2 id="weekBalance">本週赤字 / 盈餘</h2>
+              </div>
+              <strong id="weekMacros" class="muted"></strong>
+            </div>
+            <div id="weekChart" class="week-chart"></div>
+            <div id="daySelector" class="day-selector"></div>
+          </section>
+        </section>
+
+        <section id="coachView" class="view">
+          <section class="coach-summary">
+            <article class="panel">
+              <span>名下學員</span>
+              <strong id="studentCount">0</strong>
+              <small id="studentQuota">-</small>
+            </article>
+            <article class="panel">
+              <span>今日總攝取</span>
+              <strong id="coachTodayCalories">0 kcal</strong>
+              <small>所有學員加總</small>
+            </article>
+            <article class="panel">
+              <span>本週總赤字</span>
+              <strong id="coachWeekDeficit">0 kcal</strong>
+              <small>目標 - 攝取</small>
+            </article>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <span>教練視角</span>
+                <h2>學員今日與一週狀態</h2>
+              </div>
+              <a id="coachAdminLink" class="ghost-link" href="/admin/">進階管理</a>
+            </div>
+            <div id="studentCards" class="student-cards"></div>
+          </section>
+        </section>
+      </section>
+    </main>
+    <script src="/app/app.js" type="module"></script>
+  </body>
+</html>

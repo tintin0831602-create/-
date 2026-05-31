@@ -14,6 +14,7 @@ import {
   createPaymentRecord,
   deleteGeneratedTestAccounts,
   deleteUserAccount,
+  findCoachAccessByClaimedLineUserId,
   findCoachAccessByName,
   findUserByDisplayName,
   getCoachAccessByPin,
@@ -28,6 +29,7 @@ import {
   countStudentsForCoachKeys,
   coachKeyForPin,
   listUsers,
+  listPayments,
   markCheckoutSessionPaid,
   updateUserBodyStats,
   updateUserGoals,
@@ -45,7 +47,7 @@ import {
 import { groupIntroMessage, introMessage, registrationMessage } from "./messages.js";
 import { createLoadTestDataset, formatLoadTestDatasetText } from "./testSeed.js";
 import { todayInTimezone } from "./time.js";
-import type { CheckoutPlanId, CheckoutSession, LineEvent, LineWebhookBody } from "./types.js";
+import type { CheckoutPlanId, CheckoutSession, LineEvent, LineWebhookBody, UserProfile } from "./types.js";
 
 const app = express();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +59,7 @@ app.get("/health", (_req, res) => {
 
 app.use(express.static(publicDir));
 app.use("/admin", express.static(path.join(publicDir, "admin")));
+app.use("/app", express.static(path.join(publicDir, "app")));
 app.use("/checkout", express.static(path.join(publicDir, "checkout")));
 app.use("/api", express.json());
 
@@ -260,9 +263,58 @@ app.get("/auth/line/start", (req, res) => {
   res.redirect(authUrl.toString());
 });
 
+app.get("/auth/line/app/start", (req, res) => {
+  if (!config.lineLoginChannelId || !config.lineLoginChannelSecret) {
+    res.redirect("/app/?error=line_login_not_configured");
+    return;
+  }
+
+  const state = `app_${crypto.randomBytes(18).toString("hex")}`;
+  res.setHeader(
+    "set-cookie",
+    `hermes_app_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=900${baseUrl().startsWith("https://") ? "; Secure" : ""}`,
+  );
+
+  const authUrl = new URL("https://access.line.me/oauth2/v2.1/authorize");
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("client_id", config.lineLoginChannelId);
+  authUrl.searchParams.set("redirect_uri", lineLoginCallbackUrl());
+  authUrl.searchParams.set("state", state);
+  authUrl.searchParams.set("scope", "profile openid");
+  authUrl.searchParams.set("nonce", crypto.randomBytes(12).toString("hex"));
+  res.redirect(authUrl.toString());
+});
+
 app.get("/auth/line/callback", async (req, res) => {
   const code = typeof req.query.code === "string" ? req.query.code : "";
   const state = typeof req.query.state === "string" ? req.query.state : "";
+  if (state.startsWith("app_")) {
+    const cookieState = parseCookie(req.header("cookie") || "").hermes_app_state;
+    if (!code || cookieState !== state) {
+      res.redirect("/app/?error=line_auth_expired");
+      return;
+    }
+
+    try {
+      const profile = await exchangeLineLoginProfile(code);
+      createLineLoginUserIfMissing({
+        lineUserId: profile.userId,
+        displayName: profile.displayName,
+      });
+      const token = signAppToken({
+        sub: profile.userId,
+        name: profile.displayName,
+        exp: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      });
+      res.setHeader("set-cookie", "hermes_app_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+      res.redirect(`/app/?token=${encodeURIComponent(token)}`);
+    } catch (error) {
+      console.error("LINE app login callback failed", error);
+      res.redirect("/app/?error=line_auth_failed");
+    }
+    return;
+  }
+
   const session = state ? getCheckoutSessionByState(state) : undefined;
   if (!code || !session || session.expires_at <= Date.now()) {
     res.redirect("/checkout/?error=line_auth_expired");
@@ -284,6 +336,43 @@ app.get("/auth/line/callback", async (req, res) => {
     console.error("LINE Login callback failed", error);
     res.redirect("/checkout/?error=line_auth_failed");
   }
+});
+
+app.get("/api/app/summary", (req, res) => {
+  const token = appBearerToken(req);
+  const payload = token ? verifyAppToken(token) : undefined;
+  if (!payload) {
+    res.status(401).json({ error: "請先用 LINE 登入。" });
+    return;
+  }
+
+  const user = getUser(payload.sub);
+  if (!user) {
+    res.status(404).json({ error: "找不到 LINE 帳號資料，請先在 LINE 傳「我是學員 你的名字」或完成付款授權。" });
+    return;
+  }
+
+  const today = todayInTimezone(config.timezone);
+  const coachAccess = findCoachAccessByClaimedLineUserId(user.line_user_id);
+  const coachKeys = coachAccess ? [user.line_user_id, coachKeyForPin(coachAccess.pin)] : [user.line_user_id];
+  const canViewStudents = user.role === "owner" || user.role === "coach" || Boolean(user.is_coach);
+
+  res.json({
+    today,
+    viewer: publicUser(user),
+    coach: coachAccess
+      ? {
+          name: coachAccess.coach_name,
+          pin: coachAccess.pin,
+          student_quota: coachAccess.student_quota,
+          expires_at: coachAccess.expires_at,
+          permanent_access: Boolean(coachAccess.permanent_access),
+          admin_url: adminUrl(coachAccess.pin, "coach"),
+        }
+      : null,
+    self: userDashboard(user, today),
+    students: canViewStudents ? listUsersForCoachKeys(coachKeys).map((student) => userDashboard(student, today)) : [],
+  });
 });
 
 app.get("/api/admin/summary", (req, res) => {
@@ -314,7 +403,9 @@ app.get("/api/admin/summary", (req, res) => {
     coach_owner_id: user.coach_owner_id,
     today_totals: getDailyTotals(user.line_user_id, today),
     today_entries: getDailyEntries(user.line_user_id, today),
+    usage: usageSummary(user, today),
   }));
+  const payments = admin.kind === "owner" ? listPayments(60) : [];
 
   res.json({
     mode: admin.kind,
@@ -339,7 +430,10 @@ app.get("/api/admin/summary", (req, res) => {
           user.permanent_access ||
           (user.access_expires_at && user.access_expires_at > Date.now()),
       ).length,
+      entries_7d: users.reduce((total, user) => total + user.usage.entries_7d, 0),
+      revenue_test_twd: payments.reduce((total, payment) => total + payment.amount_twd, 0),
     },
+    payments,
     users,
   });
 });
@@ -976,6 +1070,63 @@ function baseUrl(): string {
   return (config.baseUrl || "https://nutritionay1.onrender.com").replace(/\/+$/, "");
 }
 
+function appTokenSecret(): string {
+  return config.lineChannelSecret || config.adminPin || "hermes-app";
+}
+
+function signAppToken(payload: { sub: string; name: string; exp: number }): string {
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", appTokenSecret()).update(body).digest("base64url");
+  return `${body}.${signature}`;
+}
+
+function verifyAppToken(token: string): { sub: string; name: string; exp: number } | undefined {
+  const [body, signature] = token.split(".");
+  if (!body || !signature) {
+    return undefined;
+  }
+  const expected = crypto.createHmac("sha256", appTokenSecret()).update(body).digest("base64url");
+  const actual = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actual.length !== expectedBuffer.length || !crypto.timingSafeEqual(actual, expectedBuffer)) {
+    return undefined;
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as {
+      sub?: string;
+      name?: string;
+      exp?: number;
+    };
+    if (!payload.sub || !payload.exp || payload.exp <= Date.now()) {
+      return undefined;
+    }
+    return { sub: payload.sub, name: payload.name || "LINE 使用者", exp: payload.exp };
+  } catch {
+    return undefined;
+  }
+}
+
+function appBearerToken(req: express.Request): string {
+  const authorization = req.header("authorization") || "";
+  if (authorization.toLowerCase().startsWith("bearer ")) {
+    return authorization.slice(7).trim();
+  }
+  return String(req.query.token || "");
+}
+
+function parseCookie(cookieHeader: string): Record<string, string> {
+  return Object.fromEntries(
+    cookieHeader
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const [key, ...value] = part.split("=");
+        return [key, decodeURIComponent(value.join("="))];
+      }),
+  );
+}
+
 function adminUrl(pin?: string, tab?: "student" | "coach" | "admin" | "billing"): string {
   const params = new URLSearchParams();
   if (pin) params.set("pin", pin);
@@ -1103,6 +1254,78 @@ function durationToDays(duration: "7" | "30" | "365" | "permanent" | "disabled")
   if (duration === "365") return 365;
   if (duration === "disabled") return 0;
   return undefined;
+}
+
+function publicUser(user: UserProfile) {
+  return {
+    line_user_id: user.line_user_id,
+    display_name: user.display_name,
+    role: user.role || (user.is_coach ? "coach" : "student"),
+    goal_calories: user.goal_calories,
+    goal_protein_g: user.goal_protein_g,
+    goal_fat_g: user.goal_fat_g,
+    goal_carbs_g: user.goal_carbs_g,
+    sex: user.sex,
+    age: user.age,
+    height_cm: user.height_cm,
+    weight_kg: user.weight_kg,
+    permanent_access: Boolean(user.permanent_access),
+    access_expires_at: user.access_expires_at,
+    student_quota: user.student_quota,
+    coach_owner_id: user.coach_owner_id,
+  };
+}
+
+function userDashboard(user: UserProfile, today: string) {
+  const dates = lastSevenDates(today);
+  const entries = getEntriesInDateRange(user.line_user_id, dates[0], dates[dates.length - 1]);
+  const days = dates.map((date) => {
+    const dayEntries = entries.filter((entry) => entry.consumed_date === date);
+    const totals = sumEntries(dayEntries);
+    return {
+      date,
+      totals,
+      deficit_calories: Math.round(user.goal_calories - totals.calories),
+      surplus_calories: Math.round(totals.calories - user.goal_calories),
+      entries: dayEntries,
+    };
+  });
+  const weekTotals = days.reduce(
+    (total, day) => ({
+      calories: total.calories + day.totals.calories,
+      protein_g: total.protein_g + day.totals.protein_g,
+      fat_g: total.fat_g + day.totals.fat_g,
+      carbs_g: total.carbs_g + day.totals.carbs_g,
+      deficit_calories: total.deficit_calories + day.deficit_calories,
+      surplus_calories: total.surplus_calories + day.surplus_calories,
+      entries: total.entries + day.entries.length,
+    }),
+    { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0, deficit_calories: 0, surplus_calories: 0, entries: 0 },
+  );
+
+  return {
+    user: publicUser(user),
+    today_totals: getDailyTotals(user.line_user_id, today),
+    today_entries: getDailyEntries(user.line_user_id, today),
+    start_date: dates[0],
+    end_date: dates[dates.length - 1],
+    week_totals: weekTotals,
+    days,
+  };
+}
+
+function usageSummary(user: UserProfile, today: string) {
+  const dates = lastSevenDates(today);
+  const entries = getEntriesInDateRange(user.line_user_id, dates[0], dates[dates.length - 1]);
+  const weekTotals = sumEntries(entries);
+  return {
+    entries_7d: entries.length,
+    calories_7d: weekTotals.calories,
+    protein_7d: weekTotals.protein_g,
+    fat_7d: weekTotals.fat_g,
+    carbs_7d: weekTotals.carbs_g,
+    last_entry_at: entries[entries.length - 1]?.created_at || null,
+  };
 }
 
 function lastSevenDates(today: string): string[] {

@@ -64,7 +64,7 @@ els.saveUser.addEventListener("click", saveUserValues);
 els.copyCoachCommand.addEventListener("click", buildCoachPinCommand);
 els.loadWeek.addEventListener("click", () => loadWeeklyReview().catch(showError));
 
-if (initialParams.get("tab")) activateTab(initialParams.get("tab"));
+activateTab(normalizeTab(initialParams.get("tab") || "people"));
 loadSummary().catch(showError);
 setInterval(() => {
   if (!document.hidden && els.pin.value) loadSummary({ silent: true }).catch(() => {});
@@ -98,8 +98,15 @@ async function loadSummary(options = {}) {
 }
 
 function activateTab(tabName) {
+  tabName = normalizeTab(tabName);
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.tab === tabName));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("active", panel.id === `${tabName}Panel`));
+}
+
+function normalizeTab(tabName) {
+  if (tabName === "admin" || tabName === "student" || tabName === "coach") return "people";
+  if (tabName === "billing") return "access";
+  return ["overview", "people", "access", "usage"].includes(tabName) ? tabName : "people";
 }
 
 function renderOverview() {

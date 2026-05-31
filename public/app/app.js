@@ -12,6 +12,7 @@ const els = {
   welcomeTitle: $("#welcomeTitle"),
   accessLine: $("#accessLine"),
   logoutButton: $("#logoutButton"),
+  studentTab: $("#studentTab"),
   coachTab: $("#coachTab"),
   studentView: $("#studentView"),
   coachView: $("#coachView"),
@@ -76,10 +77,17 @@ function render() {
   els.welcomeTitle.textContent = `你好，${data.viewer.display_name}`;
   els.accessLine.textContent = `${roleLabel(data.viewer)} · ${accessText(data.viewer)}`;
 
-  const canCoach = data.students.length > 0 || data.viewer.role === "coach" || data.viewer.role === "owner";
+  const isCoach = data.viewer.role === "coach" || data.viewer.role === "owner";
+  const canCoach = isCoach || data.students.length > 0;
+  els.studentTab.hidden = isCoach;
   els.coachTab.hidden = !canCoach;
   renderStudentDashboard(data.self);
-  if (canCoach) renderCoachDashboard(data);
+  if (canCoach) {
+    renderCoachDashboard(data);
+    activateView("coach");
+  } else {
+    activateView("student");
+  }
 }
 
 function renderStudentDashboard(dashboard) {

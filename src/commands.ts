@@ -115,6 +115,10 @@ export async function handleTextMessage(
   }
 
   if (command === "教練登入教學") {
+    return coachLoginMenuMessage();
+  }
+
+  if (command === "教練登入格式") {
     return coachLoginPrompt();
   }
 
@@ -160,7 +164,7 @@ export async function handleTextMessage(
       if (access) {
         return coachDashboardLinkMessage(access.coach_name, access.pin, access.student_quota);
       }
-      return coachHelpMessage();
+      return coachActiveMenuMessage(user);
     }
     return coachZoneMessage();
   }
@@ -856,6 +860,7 @@ function isPublicCommand(command: string | undefined, text: string): boolean {
       "教練登入",
       "教練區",
       "教練登入教學",
+      "教練登入格式",
       "我是學員",
       "我是教練",
       "付款說明",
@@ -1091,7 +1096,8 @@ function studentZoneMessage(user?: UserProfile): LineReplyMessage {
 
 function coachZoneMessage(): LineReplyMessage {
   return flexMenu("教練區", "教練入口", "試用教練可先建立身份；已購買或拿到 PIN 的教練，登入成功後會取得可點擊的管理台。", [
-    messageButton("教練登入教學", "教練登入教學"),
+    messageButton("試用教練身份", "我是教練"),
+    messageButton("PIN 登入方式", "教練登入教學"),
     uriButton("教練介面", appUrl()),
     uriButton("購買教練方案", checkoutUrl("coach_month")),
     messageButton("查看學員", "教練成員"),
@@ -1104,7 +1110,7 @@ function adminZoneMessage(): LineReplyMessage {
     messageButton("最高權限設定", "最高權限設定教學"),
     messageButton("產生教練 PIN", "產生教練PIN教學"),
     messageButton("查看成員", "權限成員"),
-    uriButton("管理台", adminUrl(undefined, "admin")),
+    uriButton("管理台", adminUrl(undefined, "people")),
   ]);
 }
 
@@ -1131,6 +1137,24 @@ function coachDashboardLinkMessage(coachName: string, pin: string, quota: number
       messageButton("授權學員", "教練授權教學"),
     ]),
   ];
+}
+
+function coachLoginMenuMessage(): LineReplyMessage {
+  return flexMenu("教練登入", "選一個方式進入", "如果你還沒有 PIN，可以先開 7 天試用；如果已經付款或 Jasper 給你 PIN，請照格式輸入登入。", [
+    messageButton("建立試用教練", "我是教練"),
+    uriButton("教練介面", appUrl()),
+    uriButton("購買教練方案", checkoutUrl("coach_month")),
+    messageButton("查看登入格式", "教練登入格式"),
+  ]);
+}
+
+function coachActiveMenuMessage(user: UserProfile): LineReplyMessage {
+  return flexMenu("教練區", `你好，${user.display_name} 教練`, "這裡是教練入口。你可以看學員、授權學員，或進入教練介面查看今日與本週營養資料。", [
+    uriButton("開啟教練介面", appUrl()),
+    uriButton("進階管理台", adminUrl(undefined, "people")),
+    messageButton("查看學員", "教練成員"),
+    messageButton("授權學員", "教練授權教學"),
+  ]);
 }
 
 function studentIdentityPrompt(): string {
@@ -1234,7 +1258,7 @@ function uriButton(label: string, uri: string) {
   };
 }
 
-function adminUrl(pin?: string, tab?: "student" | "coach" | "admin" | "billing"): string {
+function adminUrl(pin?: string, tab?: "student" | "coach" | "admin" | "billing" | "people" | "access" | "usage" | "overview"): string {
   const base = (config.baseUrl || "https://nutritionay1.onrender.com").replace(/\/+$/, "");
   const params = new URLSearchParams();
   if (pin) params.set("pin", pin);

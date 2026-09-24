@@ -214,6 +214,25 @@ BMR 男/女 年齡 身高cm 體重kg
 身體資料 男 30 175 70
 ```
 
+## 開發工具：AI 額度監控（coding-usage-bar）
+
+開發時可用 [coding-usage-bar](https://github.com/hanzhangzzz/coding-usage-bar) 在 macOS 選單列監控 Claude Code、Codex、GLM、DeepSeek、MiniMax、Kimi 的用量與剩餘額度。
+
+這只是本機開發工具，不會加入 `dependencies` / `devDependencies`，也不影響 Render 部署（套件限定 macOS，放進依賴會讓 Linux 上的 `npm install` 失敗）。
+
+需求：macOS、Node.js 20 以上、Homebrew（安裝時會自動裝 SwiftBar）。
+
+```bash
+npm run usage:install   # 安裝選單列外掛、launchd 排程與 CLI（~/.local/bin/coding-usage-bar）
+npm run usage:doctor    # 檢查資料來源與選單列狀態
+npm run usage:status    # 重新收集並顯示目前用量
+```
+
+- Claude Code 用量需透過 status line 取得，安裝時會詢問是否包裝既有的 status line。
+- GLM / DeepSeek / MiniMax / Kimi 的 API key 設定在 `~/.coding-usage-bar/config.json`，不要放進本專案的 `.env`。
+- 本專案使用的 Gemini API 不在它支援的範圍內。
+- 移除：`coding-usage-bar uninstall`。
+
 ## 注意
 
 圖片和文字分析是營養估算，不應取代醫師、營養師或醫療建議。若是特殊疾病、孕期、競賽備賽或嚴格飲食控制，請讓專業人員確認目標與紀錄方式。

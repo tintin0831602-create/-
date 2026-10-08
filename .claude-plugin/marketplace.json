@@ -1,0 +1,5 @@
+{
+  "name": "hermes-mods",
+  "owner": { "name": "tintin0831602-create" },
+  "plugins": [{ "name": "plugins-zh", "source": "./mods/plugins-zh" }]
+}

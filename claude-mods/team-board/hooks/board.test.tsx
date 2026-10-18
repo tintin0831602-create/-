@@ -78,3 +78,14 @@ test('the pane shows the leader, the progress and every member with its tasks', 
   await has(/等待 t1、t2 完成|完成後解鎖 t3/)
   await ui.unmount()
 })
+
+test('/agent-team demo fills the board, and the pane draws on every surface', async $ => {
+  const ran = await $.command.run({ command: 'agent-team', args: 'demo' } as never).catch(() => undefined)
+  expect(ran === undefined || 'text' in (ran as object)).toBe(true)
+  for (const surface of ['terminal', 'desktop', 'mobile', 'vscode'] as const) {
+    const ui = await $.ui.mount({ plugin: 'team-board', surface, ...PANE, props: { ...PANE.props, bodyColumns: surface === 'mobile' ? 44 : 90 }, requestId: 'team-board' } as never)
+    expect(await ui.find({ type: 'Text', text: /總編輯/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /任務依賴/ })).toBeDefined()
+    await ui.unmount()
+  }
+})

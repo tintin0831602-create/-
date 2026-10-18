@@ -13,19 +13,27 @@
 
 吉祥物的表情會跟著狀態變：待命是 `• •`，工作中眼睛會左右看，完成是 `^ ^`，失敗是 `x x`。
 
-## 使用方式
+## 安裝
 
-```sh
-claude --plugin-dir /你的路徑/claude-mods/team-board
+**雲端和手機（自動）**：這個 repo 的 `.claude/settings.json` 已經設定好。只要在這個 repo 開 Claude Code 雲端工作階段（網頁或手機 App），外掛就會自動安裝並載入，不用做任何事。
+
+**你的電腦**：在 Claude Code 的輸入框輸入：
+
+```
+/plugin install team-board --marketplace tintin0831602-create/-
 ```
 
-進入 Claude Code 後可以輸入：
+出現 `Add marketplace?` 時按 `y`，再選安裝範圍（直接 Enter 就是「所有專案都能用」）。repo 是私人的，所以你的電腦要能用 git 讀取 GitHub（例如先執行過 `gh auth login` 和 `gh auth setup-git`）。
 
-- `/team`：打開面板
-- `/team demo`：填入示範資料，不用真的派出成員就能先看效果
-- `/team clear`：清空面板
+## 使用方式
 
-面板會停靠在右側，需要終端機至少約 110 欄寬。窄一點的話，它會改顯示在輸入框上方。
+- `/agent-team` 或 `/team`：打開面板
+- `/agent-team demo`：填入示範資料，不用真的派出成員就能先看效果
+- `/agent-team clear`：清空面板
+
+Claude 派出子代理或建立任務時，面板會自己打開並即時更新。面板會停靠在右側，需要終端機至少約 110 欄寬；窄一點的話，它會改顯示在輸入框上方。
+
+**開發時**直接從資料夾載入：`claude --plugin-dir 你的路徑/claude-mods/team-board`
 
 ## 顏色與 Terminal.app
 

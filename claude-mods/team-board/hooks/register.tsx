@@ -1,11 +1,12 @@
 import { atom, read, update } from 'claude-code'
-import type { Register } from 'claude-code'
+import type { Hook, Register } from 'claude-code'
 
 import type { Member, MemberStatus, Task } from '../types'
 import { PALETTE_KEYS, SPRITES } from './sprites'
 import type { Face, Skin } from './sprites'
 
 const PANE = 'team-board'
+const COMMANDS = ['team', 'agent-team'] as const
 const title = atom({ plugin: 'team-board', key: 'title' } as const, '')
 const members = atom({ plugin: 'team-board', key: 'members' } as const, [] as Member[])
 const tasks = atom({ plugin: 'team-board', key: 'tasks' } as const, [] as Task[])
@@ -153,9 +154,26 @@ const DEMO_TASKS: Task[] = [
 
 const clip = (text: string, max: number) => wrapCells(text, Math.max(2, max), 1)[0] ?? ''
 
+// `/team` and `/agent-team`: open the pane; `demo` fills it with sample data, `clear` empties it.
+const openBoard: Hook<'command.run'> = async ($, e) => {
+  if (e.args.trim() === 'demo') {
+    await update($, title, () => '查詢最近的 AI 新聞並總結（示範）')
+    await update($, members, () => DEMO_MEMBERS)
+    await update($, tasks, () => DEMO_TASKS)
+  } else if (e.args.trim() === 'clear') {
+    await update($, title, () => '')
+    await update($, members, () => [])
+    await update($, tasks, () => [])
+  }
+  await $.ui.open({ id: PANE, title: '團隊協作' })
+  return { text: '已打開團隊協作面板。' }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'team', description: '打開團隊協作面板（加 demo 看示範，加 clear 清空）' })
+    for (const name of COMMANDS) {
+      await $.command.register({ name, description: '打開團隊協作面板（加 demo 看示範，加 clear 清空）' })
+    }
 
     // Keeps member statuses current and animates the ones at work.
     $.clock.every(1000, async () => {
@@ -174,19 +192,8 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('command.run', { command: 'team' }, async ($, e) => {
-    if (e.args.trim() === 'demo') {
-      await update($, title, () => '查詢最近的 AI 新聞並總結（示範）')
-      await update($, members, () => DEMO_MEMBERS)
-      await update($, tasks, () => DEMO_TASKS)
-    } else if (e.args.trim() === 'clear') {
-      await update($, title, () => '')
-      await update($, members, () => [])
-      await update($, tasks, () => [])
-    }
-    await $.ui.open({ id: PANE, title: '團隊協作' })
-    return { text: '已打開團隊協作面板。' }
-  })
+  on('command.run', { command: 'team' }, openBoard)
+  on('command.run', { command: 'agent-team' }, openBoard)
 
   on('prompt.submit', async ($, e, next) => {
     if (!e.isMeta && !e.command && e.text.trim() && (await read($, title)) === '') {

@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "tintin-mods": {
+      "source": { "source": "directory", "path": "." }
+    }
+  },
+  "enabledPlugins": {
+    "team-board@tintin-mods": true
+  }
+}

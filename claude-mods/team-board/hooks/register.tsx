@@ -46,6 +46,51 @@ export function taskState(task: Task, all: Task[]): 'done' | 'active' | 'blocked
 }
 
 const TASK_COLOR = { done: C.green, active: C.blue, blocked: C.orange, todo: C.gray }
+const TASK_LABEL = { done: '已完成', active: '進行中', blocked: '等待依賴', todo: '未開始' }
+
+// A task's column in the dependency tree: 0 with no blockers, else one past
+// its deepest blocker. A cycle or a missing blocker counts as column 0.
+export function taskDepths(all: Task[]): Map<string, number> {
+  const depth = new Map<string, number>()
+  const visit = (id: string, seen: Set<string>): number => {
+    const known = depth.get(id)
+    if (known !== undefined) return known
+    const task = all.find(t => t.id === id)
+    if (!task || seen.has(id)) return 0
+    seen.add(id)
+    const d = task.blockedBy.filter(b => all.some(t => t.id === b)).reduce((max, b) => Math.max(max, visit(b, seen) + 1), 0)
+    seen.delete(id)
+    depth.set(id, d)
+    return d
+  }
+  for (const t of all) visit(t.id, new Set())
+  return depth
+}
+
+// Terminal cells a string takes: CJK and full-width forms take two.
+const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/
+export const cells = (text: string) => [...text].reduce((n, ch) => n + (WIDE.test(ch) ? 2 : 1), 0)
+
+// Breaks `text` into at most `lines` lines of `width` cells, the last cut with an ellipsis.
+export function wrapCells(text: string, width: number, lines: number): string[] {
+  const out: string[] = []
+  let line = ''
+  for (const ch of text) {
+    if (cells(line + ch) > width) {
+      out.push(line)
+      line = ''
+      if (out.length === lines) break
+    }
+    line += ch
+  }
+  if (out.length < lines && line) out.push(line)
+  if (cells(out.join('')) < cells(text)) {
+    let last = out[lines - 1] ?? ''
+    while (last && cells(last + '…') > width) last = [...last].slice(0, -1).join('')
+    out[lines - 1] = last + '…'
+  }
+  return out
+}
 
 export function faceFor(status: MemberStatus, frame: number): Face {
   if (status === 'completed') return 'happy'
@@ -83,6 +128,9 @@ export function spriteLines(skin: Skin, face: Face) {
   return lines
 }
 
+const SPRITE_W = 12
+const SPRITE_ROWS = 6
+
 const skinOf = (index: number): Skin => (index % 2 === 0 ? 'sprout' : 'pencil')
 
 const ownsTask = (m: Member, t: Task) => t.owner !== undefined && (t.owner === m.name || t.owner === m.id)
@@ -98,11 +146,12 @@ const DEMO_TASKS: Task[] = [
   { id: '1', subject: '蒐集模型與產品發布', status: 'completed', owner: 'd1', blockedBy: [] },
   { id: '2', subject: '蒐集產業與政策新聞', status: 'in_progress', owner: 'd2', blockedBy: [] },
   { id: '3', subject: '蒐集研究突破', status: 'in_progress', owner: 'd3', blockedBy: [] },
-  { id: '4', subject: '整合三方資料並寫總結', status: 'pending', owner: 'd4', blockedBy: ['1', '2', '3'] },
-  { id: '5', subject: '查證引用來源', status: 'pending', owner: 'd4', blockedBy: ['4'] },
+  { id: '4', subject: '整合三方資料、去重並寫成繁中總結', status: 'pending', owner: 'd4', blockedBy: ['1', '2', '3'] },
+  { id: '5', subject: '查證每則新聞的引用來源', status: 'pending', owner: 'd3', blockedBy: ['4'] },
+  { id: '6', subject: '排版成最終報告並交付', status: 'pending', owner: 'd4', blockedBy: ['4'] },
 ]
 
-const clip = (text: string, max: number) => (text.length > max ? text.slice(0, Math.max(1, max - 1)) + '…' : text)
+const clip = (text: string, max: number) => wrapCells(text, Math.max(2, max), 1)[0] ?? ''
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -181,13 +230,15 @@ export const register: Register = on => {
         ? ts.filter(t => t.id !== a.taskId)
         : ts.map(t =>
             t.id !== a.taskId
-              ? t
+              ? a.addBlocks?.includes(t.id) && !t.blockedBy.includes(a.taskId)
+                ? { ...t, blockedBy: [...t.blockedBy, a.taskId] }
+                : t
               : {
                   ...t,
                   subject: a.subject ?? t.subject,
                   status: status ?? t.status,
                   owner: a.owner ?? t.owner,
-                  blockedBy: [...t.blockedBy, ...(a.addBlockedBy ?? [])],
+                  blockedBy: [...new Set([...t.blockedBy, ...(a.addBlockedBy ?? [])])],
                 },
           ),
     )
@@ -203,7 +254,7 @@ export const register: Register = on => {
     const width = Math.max(30, e.props.bodyColumns)
 
     const Sprite = ({ skin, face }: { skin: Skin; face: Face }) => (
-      <Box flexDirection="column" width={16} flexShrink={0}>
+      <Box flexDirection="column" width={SPRITE_W} flexShrink={0}>
         {spriteLines(skin, face).map(runs => (
           <Text>
             {runs.map(r => (
@@ -239,7 +290,7 @@ export const register: Register = on => {
     const seg = units.length ? Math.max(1, Math.floor((barWidth - gap * (units.length - 1)) / units.length)) : 0
 
     const leaderFace: Face = allDone ? 'happy' : ms.some(m => m.status === 'running') ? faceFor('running', frame) : 'idle'
-    const infoWidth = Math.max(10, width - 16 - 4)
+    const infoWidth = Math.max(10, width - SPRITE_W - 4)
 
     return (
       <Box flexDirection="column" width={width} backgroundColor={C.panel}>
@@ -307,8 +358,8 @@ export const register: Register = on => {
               return (
                 <Box marginTop={1}>
                   <Box flexDirection="column" width={2} flexShrink={0}>
-                    {Array.from({ length: 8 }, (_, row) => (
-                      <Text color={row === 3 ? label.color : C.track}>{row === 3 ? '●' : isLast && row > 3 ? ' ' : '│'}</Text>
+                    {Array.from({ length: SPRITE_ROWS }, (_, row) => (
+                      <Text color={row === 2 ? label.color : C.track}>{row === 2 ? '●' : isLast && row > 2 ? ' ' : '│'}</Text>
                     ))}
                   </Box>
                   <Sprite skin={skinOf(i)} face={faceFor(m.status, frame + i)} />
@@ -344,7 +395,104 @@ export const register: Register = on => {
             })}
           </Box>
         )}
+
+        {ts.length > 0 && <TaskTree />}
       </Box>
     )
+
+    // The dependency tree: one column per depth, left to right, a column
+    // unlocking once those before it are done. Columns that do not fit the
+    // pane's width continue in a band below.
+    function TaskTree() {
+      const depth = taskDepths(ts)
+      const levels = Math.max(...ts.map(t => depth.get(t.id) ?? 0)) + 1
+      const columns = Array.from({ length: levels }, (_, d) => ts.filter(t => (depth.get(t.id) ?? 0) === d))
+      const link = 3
+      const perBand = Math.max(1, Math.min(levels, Math.floor((width + link) / (22 + link))))
+      const cardW = Math.min(34, Math.floor((width - link * (perBand - 1)) / perBand))
+      const bands = Array.from({ length: Math.ceil(levels / perBand) }, (_, b) => columns.slice(b * perBand, (b + 1) * perBand))
+      const ownerOf = (t: Task) => ms.find(m => ownsTask(m, t))
+      const blocks = (t: Task) => ts.filter(o => o.blockedBy.includes(t.id))
+      const focus =
+        ts.find(t => taskState(t, ts) === 'active') ??
+        ts.find(t => taskState(t, ts) === 'todo') ??
+        ts.find(t => taskState(t, ts) === 'blocked') ??
+        ts[ts.length - 1]
+
+      const Card = ({ task }: { task: Task }) => {
+        const state = taskState(task, ts)
+        const color = TASK_COLOR[state]
+        const inner = cardW - 4
+        const owner = ownerOf(task)?.name ?? task.owner ?? '未指派'
+        const subject = wrapCells(task.subject, inner, 2)
+        return (
+          <Box flexDirection="column" borderStyle="round" borderColor={color} paddingX={1} width={cardW} flexShrink={0}>
+            <Box justifyContent="space-between">
+              <Text color={color} bold>
+                ● t{task.id}
+              </Text>
+              <Text dimColor>{clip(owner, inner - cells(`● t${task.id}`) - 1)}</Text>
+            </Box>
+            <Text>{subject[0] ?? ''}</Text>
+            <Text>{subject[1] ?? ' '}</Text>
+          </Box>
+        )
+      }
+
+      const focusState = focus && taskState(focus, ts)
+      const focusOwner = focus && ownerOf(focus)
+      const waitingOn = focus ? focus.blockedBy.filter(id => ts.find(t => t.id === id)?.status !== 'completed') : []
+      const unlocks = focus ? blocks(focus) : []
+
+      return (
+        <Box flexDirection="column" marginTop={1}>
+          <Box justifyContent="space-between">
+            <Text bold>▾ 任務依賴</Text>
+            <Text dimColor>從左到右：前置完成後解鎖</Text>
+          </Box>
+          {bands.map((band, b) => (
+            <Box flexDirection="column" marginTop={1}>
+              {b > 0 && <Text dimColor>↓ 接續第 {b * perBand + 1} 層</Text>}
+              <Box>
+                {band.map((column, i) => (
+                  <Box>
+                    {i > 0 && (
+                      <Box flexDirection="column" width={link} flexShrink={0}>
+                        <Text> </Text>
+                        <Text color={C.gray}>─▶ </Text>
+                      </Box>
+                    )}
+                    <Box flexDirection="column">
+                      {column.map(task => (
+                        <Card task={task} />
+                      ))}
+                    </Box>
+                  </Box>
+                ))}
+              </Box>
+            </Box>
+          ))}
+
+          {focus && focusState && (
+            <Box flexDirection="column" borderStyle="round" borderColor={C.track} paddingX={1} marginTop={1}>
+              <Box gap={1}>
+                <Text color={TASK_COLOR[focusState]} bold>
+                  t{focus.id}
+                </Text>
+                <Text bold wrap="truncate-end">
+                  {clip(focus.subject, width - 18)}
+                </Text>
+                <Chip text={TASK_LABEL[focusState]} bg={TASK_COLOR[focusState]} />
+              </Box>
+              <Text dimColor>
+                {focusOwner ? `${focusOwner.name} · ${focusOwner.model}` : `負責人：${focus.owner ?? '未指派'}`}
+              </Text>
+              {waitingOn.length > 0 && <Text color={C.orange}>等待 {waitingOn.map(id => `t${id}`).join('、')} 完成</Text>}
+              <Text dimColor>{unlocks.length ? `完成後解鎖 ${unlocks.map(t => `t${t.id}`).join('、')}` : '完成後沒有待解鎖的任務'}</Text>
+            </Box>
+          )}
+        </Box>
+      )
+    }
   })
 }

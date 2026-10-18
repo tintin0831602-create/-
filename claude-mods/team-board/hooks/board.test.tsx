@@ -1,14 +1,14 @@
 import { expect, test } from 'claude-code/testing'
 
-import { faceFor, spriteLines, taskState } from './register'
+import { cells, faceFor, spriteLines, taskDepths, taskState, wrapCells } from './register'
 
 const PANE = { component: 'Pane', props: { title: '團隊協作', isFocused: false, bodyColumns: 90, placement: 'dock', scroll: { bodyRows: 60, first: 0 }, view: {} } } as const
 
-test('sprites draw as 16 columns by 8 rows with no gaps', () => {
+test('sprites draw as 12 columns by 6 rows with no gaps', () => {
   for (const skin of ['pencil', 'sprout', 'crown'] as const) {
     const lines = spriteLines(skin, 'idle')
-    expect(lines.length).toBe(8)
-    for (const runs of lines) expect(runs.map(r => r.ch).join('').length).toBe(16)
+    expect(lines.length).toBe(6)
+    for (const runs of lines) expect(runs.map(r => r.ch).join('').length).toBe(12)
     expect(lines.flat().every(r => !r.fg || r.fg.startsWith('#'))).toBe(true)
   }
 })
@@ -27,6 +27,22 @@ test('a pending task waits on its unfinished blockers', () => {
     { id: '3', subject: 'c', status: 'completed' as const, blockedBy: [] },
   ]
   expect(all.map(t => taskState(t, all))).toEqual(['active', 'blocked', 'done'])
+})
+
+test('tasks sit one column past their deepest blocker, cycles included', () => {
+  const t = (id: string, blockedBy: string[] = []) => ({ id, subject: id, status: 'pending' as const, blockedBy })
+  const depth = taskDepths([t('1'), t('2'), t('3', ['1', '2']), t('4', ['3']), t('5', ['1', '4']), t('6', ['7']), t('7', ['6'])])
+  expect(['1', '2', '3', '4', '5'].map(id => depth.get(id))).toEqual([0, 0, 1, 2, 3])
+  expect(depth.has('6') && depth.has('7')).toBe(true)
+})
+
+test('wrapping counts a CJK character as two cells', () => {
+  expect(cells('t1 搜尋')).toBe(7)
+  const lines = wrapCells('整合三方資料、去重並寫成繁中總結', 10, 2)
+  expect(lines.length).toBe(2)
+  expect(lines.every(l => cells(l) <= 10)).toBe(true)
+  expect(lines[1]?.endsWith('…')).toBe(true)
+  expect(wrapCells('短', 10, 2)).toEqual(['短'])
 })
 
 test('the pane shows the leader, the progress and every member with its tasks', async ($, on) => {
@@ -58,5 +74,7 @@ test('the pane shows the leader, the progress and every member with its tasks', 
   await has(/ t1 /)
   await has(/ t2 /)
   await has(/執行中/)
+  await has(/任務依賴/)
+  await has(/等待 t1、t2 完成|完成後解鎖 t3/)
   await ui.unmount()
 })

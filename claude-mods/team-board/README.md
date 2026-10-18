@@ -6,6 +6,8 @@
 - 隊長卡片：皇冠吉祥物，加上「已派發 N 項任務給 M 名成員」
 - 總進度：每個任務一段進度條（綠＝已交付、藍＝進行中、橘＝等待依賴、灰＝未開始）
 - 成員時間軸：每位成員有頭像、名稱、角色、模型，以及任務標籤（t1、t2…）
+- 任務依賴樹：由左到右分層，前一層完成才會解鎖下一層，卡片框線顏色代表狀態；寬度不夠時會換到下一排接續
+- 任務詳情：目前進行中的任務、負責人、還在等哪些任務、完成後會解鎖哪些
 
 ![預覽](preview.png)
 
@@ -29,20 +31,14 @@ claude --plugin-dir /你的路徑/claude-mods/team-board
 
 Mac 內建的「終端機」(Terminal.app) 只支援 256 色。一般顏色在那裡會偏掉，例如橘色變粉紅、黑框變深藍。這個 mod 的所有顏色都事先換成 256 色裡最接近的那一格，所以在 Terminal.app 和支援全彩的終端機（iTerm2、Ghostty、kitty）上看起來一樣。
 
-## 換成自己的圖
+## 修改角色圖
 
-`tools/source-art/` 放著 Gemini 生成的原圖：洋紅背景，一張 5 個姿勢。重新產生角色圖：
+三隻吉祥物都用同一個 12×12 的身體模板（照橘色、拿筆那隻畫的），只差顏色和頭上的配件：筆、芽、皇冠。模板、配色、表情都寫在 `tools/make_sprites.py` 裡，用字母畫像素，直接改就好：
 
 ```sh
-pip install pillow numpy scipy
-python3 tools/process.py 16                    # 去背、切圖、縮成 16×16，重畫表情
-python3 tools/gen_ts.py hooks/sprites.ts       # 轉成 256 色相容的程式碼
+pip install pillow
+python3 tools/make_sprites.py      # 產生 hooks/sprites.ts，以及預覽圖 tools/build/family.png
 ```
 
-換圖時請注意：
-
-- 背景要用純洋紅色（#FF00FF 附近）
-- 每個姿勢之間要留空白
-- 第 1 張必須是正面站立、兩個方形眼睛。表情是程式根據這張重畫的。
-
-`tools/build/shown256.png` 會顯示角色在 256 色下的實際樣子。
+`tools/process.py` 和 `tools/gen_ts.py` 是第一版的工具，會從 `tools/source-art/` 的 Gemini 原圖自動去背縮圖。圖縮到 12 格時會糊掉，所以改成手繪模板，這兩個工具留著當參考。
+預覽圖顯示的是角色在 256 色下的實際樣子。

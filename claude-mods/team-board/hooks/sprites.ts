@@ -9,7 +9,7 @@ export type Sprite = { palette: string[]; frames: Record<Face, string[]> }
 
 export const SPRITES: Record<Skin, Sprite> = {
   pencil: {
-    palette: ['#d7af7f', '#444444', '#121212', '#af4c4c', '#d77f4c', '#7f4c4c', '#7fd7ff'],
+    palette: ['#d7af7f', '#444444', '#080808', '#af4c4c', '#d77f4c', '#7f4c4c', '#7fd7ff'],
     frames: {
       idle: [
         '..........12',
@@ -84,7 +84,7 @@ export const SPRITES: Record<Skin, Sprite> = {
     },
   },
   sprout: {
-    palette: ['#4caf4c', '#121212', '#4c7f4c', '#4cafaf', '#4cd7d7', '#4c7f7f', '#7fd7ff'],
+    palette: ['#4caf4c', '#080808', '#4c7f4c', '#4cafaf', '#4cd7d7', '#4c7f7f', '#7fd7ff'],
     frames: {
       idle: [
         '...11..11...',
@@ -159,7 +159,7 @@ export const SPRITES: Record<Skin, Sprite> = {
     },
   },
   crown: {
-    palette: ['#ffd700', '#d70000', '#121212', '#7f4cd7', '#af4cd7', '#4c4caf', '#7fd7ff'],
+    palette: ['#ffd700', '#d70000', '#080808', '#7f4cd7', '#af4cd7', '#4c4caf', '#7fd7ff'],
     frames: {
       idle: [
         '...1.11.1...',

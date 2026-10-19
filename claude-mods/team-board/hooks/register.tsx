@@ -13,12 +13,15 @@ const tasks = atom({ plugin: 'team-board', key: 'tasks' } as const, [] as Task[]
 const tick = atom({ plugin: 'team-board', key: 'tick' } as const, 0)
 
 // Each color sits on one of the xterm-256 cells, so Terminal.app (no 24-bit
-// color) shows what a truecolor terminal does.
+// color) shows what a truecolor terminal does. A docked pane is drawn on the
+// engine's own dark gray in every theme, so text takes explicit light colors:
+// the theme's default would be black under a light theme.
 const C = {
-  panel: '#262626',
+  text: '#e4e4e4',
+  dim: '#9e9e9e',
   green: '#4caf4c',
   blue: '#4c7fff',
-  orange: '#ffaf4c',
+  orange: '#d77f00',
   red: '#ff4c4c',
   gray: '#767676',
   track: '#444444',
@@ -267,7 +270,7 @@ export const register: Register = on => {
     const Sprite = ({ skin, face }: { skin: Skin; face: Face }) => (
       <Box flexDirection="column" width={SPRITE_W} flexShrink={0}>
         {spriteLines(skin, face).map(runs => (
-          <Text>
+          <Text color={C.text}>
             {runs.map(r => (
               <Text color={r.fg} backgroundColor={r.bg}>
                 {r.ch}
@@ -304,26 +307,26 @@ export const register: Register = on => {
     const infoWidth = Math.max(10, width - SPRITE_W - 4)
 
     return (
-      <Box flexDirection="column" width={width} backgroundColor={C.panel}>
+      <Box flexDirection="column" width={width}>
         <Box justifyContent="space-between">
-          <Text bold wrap="truncate-end">
+          <Text color={C.text} bold wrap="truncate-end">
             {clip(name, Math.max(8, width - 26))}
           </Text>
           <Box gap={1} flexShrink={0}>
             <Chip text={finished ? '已結束' : ms.length ? '進行中' : '待命'} bg={finished ? C.chipBg : C.blue} color={finished ? undefined : C.chipText} />
-            <Text dimColor>{ms.length} 名成員</Text>
-            {ts.length > 0 && <Text dimColor>{counts.done}/{ts.length} 完成</Text>}
+            <Text color={C.dim}>{ms.length} 名成員</Text>
+            {ts.length > 0 && <Text color={C.dim}>{counts.done}/{ts.length} 完成</Text>}
           </Box>
         </Box>
 
         <Box borderStyle="round" borderColor={C.track} marginTop={1}>
           <Sprite skin="crown" face={leaderFace} />
           <Box flexDirection="column" marginLeft={2} flexGrow={1} justifyContent="center">
-            <Text>
-              <Text bold>隊長</Text>
-              <Text dimColor> 拆解 · 派發 · 匯總</Text>
+            <Text color={C.text}>
+              <Text color={C.text} bold>隊長</Text>
+              <Text color={C.dim}> 拆解 · 派發 · 匯總</Text>
             </Text>
-            <Text wrap="truncate-end">
+            <Text color={C.text} wrap="truncate-end">
               {ms.length === 0
                 ? '還沒有成員。派出子代理或建立任務後，這裡會自動更新。'
                 : `已派發 ${ts.length || ms.length} 項任務給 ${ms.length} 名成員`}
@@ -334,18 +337,18 @@ export const register: Register = on => {
 
         {units.length > 0 && (
           <Box flexDirection="column" marginTop={1}>
-            <Text bold>總進度</Text>
-            <Text>
+            <Text color={C.text} bold>總進度</Text>
+            <Text color={C.text}>
               {units.map((color, i) => (
                 <Text color={color}>{'━'.repeat(seg) + (gap && i < units.length - 1 ? ' ' : '')}</Text>
               ))}
             </Text>
             {ts.length > 0 && (
-              <Text>
+              <Text color={C.text}>
                 <Text color={C.blue}>■ 進行中 {counts.active}</Text>
-                <Text>{'  '}</Text>
+                <Text color={C.text}>{'  '}</Text>
                 <Text color={C.orange}>■ 等待依賴 {counts.blocked}</Text>
-                <Text>{'  '}</Text>
+                <Text color={C.text}>{'  '}</Text>
                 <Text color={C.green}>■ 已交付 {counts.done}</Text>
               </Text>
             )}
@@ -361,7 +364,7 @@ export const register: Register = on => {
 
         {ms.length > 0 && (
           <Box flexDirection="column" marginTop={1}>
-            <Text bold>▾ {ms.length} 名成員</Text>
+            <Text color={C.text} bold>▾ {ms.length} 名成員</Text>
             {ms.map((m, i) => {
               const own = ts.filter(t => ownsTask(m, t))
               const label = MEMBER_LABEL[m.status]
@@ -376,25 +379,25 @@ export const register: Register = on => {
                   <Sprite skin={skinOf(i)} face={faceFor(m.status, frame + i)} />
                   <Box flexDirection="column" marginLeft={2} width={infoWidth}>
                     <Box justifyContent="space-between">
-                      <Text bold wrap="truncate-end">
+                      <Text color={C.text} bold wrap="truncate-end">
                         {clip(m.name, infoWidth - 10)}
                       </Text>
                       <Text color={label.color}>{label.text}</Text>
                     </Box>
-                    <Text dimColor wrap="truncate-end">
+                    <Text color={C.dim} wrap="truncate-end">
                       {clip(m.role, infoWidth)}
                     </Text>
                     <Box justifyContent="space-between">
                       <Chip text={m.model} bg={C.chipBg} color={C.chipLabel} />
                       {own.length > 0 && (
-                        <Text dimColor>
+                        <Text color={C.dim}>
                           {own.filter(t => t.status === 'completed').length}/{own.length}
                         </Text>
                       )}
                     </Box>
                     {own.length > 0 && (
                       <Box flexWrap="wrap" columnGap={1}>
-                        <Text dimColor>隊長派發</Text>
+                        <Text color={C.dim}>隊長派發</Text>
                         {own.map(t => (
                           <Chip text={`t${t.id}`} bg={TASK_COLOR[taskState(t, ts)]} />
                         ))}
@@ -442,10 +445,10 @@ export const register: Register = on => {
               <Text color={color} bold>
                 ● t{task.id}
               </Text>
-              <Text dimColor>{clip(owner, inner - cells(`● t${task.id}`) - 1)}</Text>
+              <Text color={C.dim}>{clip(owner, inner - cells(`● t${task.id}`) - 1)}</Text>
             </Box>
-            <Text>{subject[0] ?? ''}</Text>
-            <Text>{subject[1] ?? ' '}</Text>
+            <Text color={C.text}>{subject[0] ?? ''}</Text>
+            <Text color={C.text}>{subject[1] ?? ' '}</Text>
           </Box>
         )
       }
@@ -458,18 +461,18 @@ export const register: Register = on => {
       return (
         <Box flexDirection="column" marginTop={1}>
           <Box justifyContent="space-between">
-            <Text bold>▾ 任務依賴</Text>
-            <Text dimColor>從左到右：前置完成後解鎖</Text>
+            <Text color={C.text} bold>▾ 任務依賴</Text>
+            <Text color={C.dim}>從左到右：前置完成後解鎖</Text>
           </Box>
           {bands.map((band, b) => (
             <Box flexDirection="column" marginTop={1}>
-              {b > 0 && <Text dimColor>↓ 接續第 {b * perBand + 1} 層</Text>}
+              {b > 0 && <Text color={C.dim}>↓ 接續第 {b * perBand + 1} 層</Text>}
               <Box>
                 {band.map((column, i) => (
                   <Box>
                     {i > 0 && (
                       <Box flexDirection="column" width={link} flexShrink={0}>
-                        <Text> </Text>
+                        <Text color={C.text}> </Text>
                         <Text color={C.gray}>─▶ </Text>
                       </Box>
                     )}
@@ -490,16 +493,16 @@ export const register: Register = on => {
                 <Text color={TASK_COLOR[focusState]} bold>
                   t{focus.id}
                 </Text>
-                <Text bold wrap="truncate-end">
+                <Text color={C.text} bold wrap="truncate-end">
                   {clip(focus.subject, width - 18)}
                 </Text>
                 <Chip text={TASK_LABEL[focusState]} bg={TASK_COLOR[focusState]} />
               </Box>
-              <Text dimColor>
+              <Text color={C.dim}>
                 {focusOwner ? `${focusOwner.name} · ${focusOwner.model}` : `負責人：${focus.owner ?? '未指派'}`}
               </Text>
               {waitingOn.length > 0 && <Text color={C.orange}>等待 {waitingOn.map(id => `t${id}`).join('、')} 完成</Text>}
-              <Text dimColor>{unlocks.length ? `完成後解鎖 ${unlocks.map(t => `t${t.id}`).join('、')}` : '完成後沒有待解鎖的任務'}</Text>
+              <Text color={C.dim}>{unlocks.length ? `完成後解鎖 ${unlocks.map(t => `t${t.id}`).join('、')}` : '完成後沒有待解鎖的任務'}</Text>
             </Box>
           )}
         </Box>

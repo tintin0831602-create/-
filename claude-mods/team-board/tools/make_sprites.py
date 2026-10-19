@@ -54,7 +54,7 @@ COLORS = {
     'crown': {'b': '#af5fd7', 's': '#875fd7', 'l': '#5f5faf'},
 }
 SHARED = {
-    'o': '#121212',
+    'o': '#000000',
     'k': '#d7af87',  # pencil wood
     'q': '#5f3f3f',  # pencil lead
     'p': '#af8757',  # pencil wood, shaded

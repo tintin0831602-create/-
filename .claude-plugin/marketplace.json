@@ -1,11 +1,13 @@
 {
   "name": "tintin-mods",
-  "owner": { "name": "tintin0831602" },
+  "owner": {
+    "name": "tintin0831602"
+  },
   "plugins": [
     {
-      "name": "team-board",
-      "source": "./claude-mods/team-board",
-      "description": "像素吉祥物的團隊協作面板：隊長、成員、任務進度與依賴樹"
+      "name": "agent-teams",
+      "source": "./claude-mods/agent-teams",
+      "description": "隊長帶領的 agent 團隊：規劃成員與相依任務、並行執行，搭配像素吉祥物的團隊協作面板"
     }
   ]
 }

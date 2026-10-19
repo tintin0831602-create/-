@@ -13,23 +13,49 @@ const PLAN = {
   ],
 }
 
-test('the pane is accepted by the engine and draws a mascot per member and the matching badge', async ($, on) => {
+const PANE_PROPS = { title: '團隊協作', isFocused: false, bodyColumns: 90, placement: 'dock', scroll: { bodyRows: 80, first: 0 }, view: {} }
+const mountPane = ($: Parameters<Parameters<typeof test>[1]>[0], surface: 'terminal' | 'desktop' | 'mobile' | 'vscode' = 'terminal') =>
+  $.ui.mount({ plugin: 'agent-teams', surface, component: 'Pane', requestId: 'agent-team', props: PANE_PROPS } as never)
+
+test('a planned team draws in the mascot pane: stage, members, statuses and the dependency tree', async ($, on) => {
   on('session.id', () => ({ value: 'session-1' }))
-  await $.tool.call(PLAN)
-  await $.tool.call({ tool: 'mcp__agent-teams__team_update', id: 't1', status: 'in_progress' })
+  await $.tool.call(PLAN as never)
+  await $.tool.call({ tool: 'mcp__agent-teams__team_update', id: 't1', status: 'in_progress' } as never)
 
-  const ui = await $.ui.mount({
-    plugin: 'agent-teams',
-    surface: 'terminal',
-    component: 'Pane',
-    requestId: 'agent-team',
-    props: { bodyColumns: 60 },
-  })
+  const ui = await mountPane($)
+  const has = async (text: RegExp) => expect(await ui.find({ type: 'Text', text })).toBeDefined()
+  await has(/審查專案/)
+  await has(/第 1\/2 階段/)
+  await has(/重跑 0 次/)
+  await has(/已派發 2 項任務給 2 名成員/)
+  await has(/找瓶頸/)
+  await has(/執行中/)
+  await has(/任務依賴/)
+  await has(/完成後解鎖 t2/)
+  await ui.unmount()
+})
 
-  expect(await ui.find({ type: 'Raster', key: 'icon-m-效能' })).toBeDefined()
-  expect(await ui.find({ type: 'Raster', key: 'icon-m-安全' })).toBeDefined()
-  expect(await ui.find({ type: 'Raster', key: 'badge-m-安全' })).toBeDefined() // 找漏洞 -> shield
-  expect(await ui.find({ type: 'Text', text: /正在做 t1/ })).toBeDefined()
+test('/agent-team demo fills the pane on every surface, and clear empties it', async $ => {
+  await $.command.run({ command: 'agent-team', args: 'demo' } as never).catch(() => undefined)
+  for (const surface of ['terminal', 'desktop', 'mobile', 'vscode'] as const) {
+    const ui = await mountPane($, surface)
+    expect(await ui.find({ type: 'Text', text: /總編輯/ })).toBeDefined()
+    await ui.unmount()
+  }
+  await $.command.run({ command: 'agent-team', args: 'clear' } as never).catch(() => undefined)
+  const ui = await mountPane($)
+  expect(await ui.find({ type: 'Text', text: /還沒有團隊/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('without a planned team, the pane follows the subagents Claude starts', async ($, on) => {
+  let n = 0
+  on('agent.spawn', () => ({ model: 'haiku', agentId: `a${++n}` }))
+  await $.agent.spawn({ prompt: 'go', description: '搜尋最近發布的 AI 模型', subagentType: 'general-purpose' } as never)
+
+  const ui = await mountPane($)
+  expect(await ui.find({ type: 'Text', text: /搜尋最近發布的 AI 模型/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /1 名成員/ })).toBeDefined()
   await ui.unmount()
 })
 

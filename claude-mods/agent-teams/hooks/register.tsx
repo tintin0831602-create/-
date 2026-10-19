@@ -1,10 +1,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface as Engine, Register } from 'claude-code'
 
-import type { TeamBoard, TeamStatus } from '../types'
+import type { SeenMember, SeenTask, TeamBoard, TeamStatus } from '../types'
+import { teamPane, viewOfBoard, type MemberStatus, type View } from './board'
 import { addTask, applyUpdate, createBoard, MODELS, setModel, summarize, type Outcome, type PlanInput, type TaskInput } from './team'
 import { badgeCells, iconCells } from './sprite'
-import { bandBlocks, paneBlocks, type Block, type Row } from './view'
+import { bandBlocks, type Block, type Row } from './view'
 
 const PANE = 'agent-team'
 const PLAN = 'mcp__agent-teams__team_plan'
@@ -18,6 +19,12 @@ const board = atom({ plugin: 'agent-teams', key: 'board' } as const, null)
 const STORE_PREFIX = 'board:'
 const KEPT_BOARDS = 20
 const frame = atom({ plugin: 'agent-teams', key: 'frame' } as const, 0)
+// Subagents and built-in tasks seen while no team is planned: the pane shows them too.
+const seenTitle = atom({ plugin: 'agent-teams', key: 'seenTitle' } as const, '')
+const seenMembers = atom({ plugin: 'agent-teams', key: 'seenMembers' } as const, [] as SeenMember[])
+const seenTasks = atom({ plugin: 'agent-teams', key: 'seenTasks' } as const, [] as SeenTask[])
+// A mascot's face changes every this many frames, a little under a second.
+const FRAMES_PER_FACE = 3
 
 const PROTOCOL = `你是一個 agent 團隊的隊長。使用者的目標：
 
@@ -32,6 +39,49 @@ const PROTOCOL = `你是一個 agent 團隊的隊長。使用者的目標：
 4. 子 agent 回來後，呼叫 ${UPDATE} 設為 completed 並附上簡短 output；失敗就設為 failed。失敗的任務可以用 status "pending" 重跑（會累計重跑次數）。
 5. 呼叫 ${STATUS} 看哪些任務變成可開始，重複步驟 3-4 直到全部結束。
 6. 最後用繁體中文給出整合報告。不要自己替成員做事。`
+
+const DEMO: TeamBoard = {
+  goal: '查詢最近的 AI 新聞並總結（示範）',
+  members: [
+    { name: '模型追蹤員', role: '搜尋最近發布的 AI 模型與產品', model: 'haiku' },
+    { name: '產業記者', role: '搜尋 AI 公司動態、融資、政策法規新聞', model: 'sonnet' },
+    { name: '研究調查員', role: '搜尋 AI 研究突破與重要論文', model: 'haiku' },
+    { name: '總編輯', role: '整合、查證並總結所有新聞', model: 'opus' },
+  ],
+  tasks: [
+    { id: 't1', subject: '蒐集模型與產品發布', assignee: '模型追蹤員', deps: [], status: 'completed', attempts: 1, output: '整理出 6 則新模型發布' },
+    { id: 't2', subject: '蒐集產業與政策新聞', assignee: '產業記者', deps: [], status: 'in_progress', attempts: 1 },
+    { id: 't3', subject: '蒐集研究突破', assignee: '研究調查員', deps: [], status: 'in_progress', attempts: 2 },
+    { id: 't4', subject: '整合三方資料、去重並寫成繁中總結', assignee: '總編輯', deps: ['t1', 't2', 't3'], status: 'pending', attempts: 0 },
+    { id: 't5', subject: '查證每則新聞的引用來源', assignee: '研究調查員', deps: ['t4'], status: 'pending', attempts: 0 },
+    { id: 't6', subject: '排版成最終報告並交付', assignee: '總編輯', deps: ['t4'], status: 'pending', attempts: 0 },
+  ],
+}
+
+const SEEN_STATUS: Record<string, MemberStatus> = {
+  pending: 'pending',
+  running: 'running',
+  waiting: 'waiting',
+  idle: 'idle',
+  completed: 'completed',
+  failed: 'failed',
+  killed: 'killed',
+}
+
+/** The view of the subagents and tasks seen without a planned team. */
+function viewOfSeen(title: string, members: SeenMember[], tasks: SeenTask[]): View {
+  return {
+    title: title || '團隊協作',
+    members: members.map(m => ({ key: m.id, name: m.name, role: m.role, model: m.model, status: SEEN_STATUS[m.status] ?? 'idle' })),
+    tasks: tasks.map(t => ({
+      id: `t${t.id}`,
+      subject: t.subject,
+      status: t.status,
+      owner: members.find(m => m.id === t.owner || m.name === t.owner)?.id ?? t.owner,
+      blockedBy: t.blockedBy.map(b => `t${b}`),
+    })),
+  }
+}
 
 const text = (result: string) => ({ result })
 const NO_TEAM = { deny: '還沒有團隊：請先呼叫 team_plan。' }
@@ -185,7 +235,26 @@ export const register: Register = on => {
       argumentHint: '<目標>',
     })
 
+    // Another plugin may own a name: the engine refuses that one, the others still register.
+    await $.command
+      .register({ name: 'agent-team', description: '開啟團隊面板（加 demo 看示範，加 clear 清空）' })
+      .catch(() => undefined)
+
     await restore($)
+
+    // Keeps seen subagents' status current, and animates them while they run.
+    $.clock.every(1000, async () => {
+      const seen = await read($, seenMembers)
+      if (!seen.some(m => m.status === 'running' || m.status === 'pending' || m.status === 'waiting')) return
+      const agents = await $.agent.list()
+      await update($, seenMembers, ms =>
+        ms.map(m => {
+          const a = agents.find(one => one.id === m.id)
+          return a ? { ...m, status: a.status, name: a.name ?? m.name } : m
+        }),
+      )
+      if ((await read($, board)) === null) await update($, frame, n => (n ?? 0) + FRAMES_PER_FACE)
+    })
 
     // Spinner: only redraws while a task runs, so an idle team costs nothing.
     $.clock.every(FRAME_MS, async () => {
@@ -198,10 +267,15 @@ export const register: Register = on => {
 
   on('command.run', { command: 'agent-teams' }, async ($, e) => {
     const goal = String(e.args ?? '').trim()
-    await $.ui.open({ id: PANE, title: '團隊進度' })
+    await $.ui.open({ id: PANE, title: '團隊協作' })
     if (goal === '') return { text: '已開啟團隊面板。用 /agent-teams <目標> 開始。' }
 
-    void $.prompt.submit({ text: PROTOCOL.replace('{GOAL}', goal) })
+    // A command.run hook may not submit a prompt itself (it would wait on the
+    // turn the hook is holding), so the protocol goes out on a timer, once the
+    // command has answered.
+    $.clock.after(0, () => {
+      $.prompt.submit({ text: PROTOCOL.replace('{GOAL}', goal) }).catch(() => $.ui.toast('團隊流程未能送出，請再試一次 /agent-teams。'))
+    })
 
     return { text: `開始規劃團隊：${goal}` }
   })
@@ -213,7 +287,7 @@ export const register: Register = on => {
     await save($, planned.board)
     await update($, frame, () => 0)
     // Best effort: the board is saved either way and /agent-teams opens the pane again.
-    void $.ui.open({ id: PANE, title: '團隊進度' }).catch(() => undefined)
+    void $.ui.open({ id: PANE, title: '團隊協作' }).catch(() => undefined)
 
     return text(summarize(planned.board))
   })
@@ -245,17 +319,83 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
     const team = await read($, board)
+    const view = team ? viewOfBoard(team) : viewOfSeen(await read($, seenTitle), await read($, seenMembers), await read($, seenTasks))
+    const tick = Math.floor((await read($, frame)) / FRAMES_PER_FACE)
 
-    if (team === null) return <els.Text dimColor>還沒有團隊。輸入 /agent-teams {'<目標>'} 開始。</els.Text>
-
-    const tick = await read($, frame)
-    const space = { columns: e.props.bodyColumns ?? 40 }
-    const Raster = 'Raster' in els ? els.Raster : undefined
-
-    return (
-      <els.Box flexDirection="column">
-        {paneBlocks(team, tick, space).map(block => blockOf(els.Box, els.Text, Raster, block))}
-      </els.Box>
-    )
+    return teamPane(els, view, tick, Math.max(30, e.props.bodyColumns ?? 40))
   })
+
+  on('command.run', { command: 'agent-team' }, async ($, e) => {
+    const arg = String(e.args ?? '').trim()
+    if (arg === 'demo') {
+      await update($, board, () => DEMO)
+    } else if (arg === 'clear') {
+      await update($, board, () => null)
+      await update($, seenTitle, () => '')
+      await update($, seenMembers, () => [])
+      await update($, seenTasks, () => [])
+    }
+    await $.ui.open({ id: PANE, title: '團隊協作' })
+
+    return { text: arg === 'clear' ? '已清空團隊面板。' : '已開啟團隊面板。' }
+  })
+
+  // Without a planned team, the pane follows the subagents and built-in tasks Claude starts.
+  on('prompt.submit', async ($, e, next) => {
+    if (!e.isMeta && !e.command && e.text.trim() && (await read($, seenTitle)) === '') {
+      await update($, seenTitle, () => e.text.trim().split('\n')[0] ?? '')
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('agent.spawn', async ($, e, next) => {
+    const out = await next(e)
+    if (out.deny === undefined && out.agentId) {
+      const member: SeenMember = {
+        id: out.agentId,
+        name: out.teammateId?.split('@')[0] ?? e.subagentType,
+        role: e.description,
+        model: out.model,
+        status: 'running',
+      }
+      await update($, seenMembers, ms => [...ms, member])
+      // A planned team opens the pane itself; a lone subagent opens it here.
+      if ((await read($, board)) === null) void $.ui.open({ id: PANE, title: '團隊協作' }).catch(() => undefined)
+    }
+    return out
+  }).catch(($, e, next) => next(e))
+
+  on('tool.call', { tool: 'TaskCreate' }, async ($, e, next) => {
+    const ran = await next(e)
+    const task = (ran.result as { task?: { id: string; subject: string } } | undefined)?.task
+    if (!ran.isError && task) {
+      await update($, seenTasks, ts => [...ts, { id: task.id, subject: task.subject, status: 'pending' as const, blockedBy: [] }])
+    }
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  on('tool.call', { tool: 'TaskUpdate' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (ran.isError || e.tool !== 'TaskUpdate') return ran
+    const a = e
+    const status = a.status
+    await update($, seenTasks, ts =>
+      status === 'deleted'
+        ? ts.filter(t => t.id !== a.taskId)
+        : ts.map(t =>
+            t.id !== a.taskId
+              ? a.addBlocks?.includes(t.id) && !t.blockedBy.includes(a.taskId)
+                ? { ...t, blockedBy: [...t.blockedBy, a.taskId] }
+                : t
+              : {
+                  ...t,
+                  subject: a.subject ?? t.subject,
+                  status: status ?? t.status,
+                  owner: a.owner ?? t.owner,
+                  blockedBy: [...new Set([...t.blockedBy, ...(a.addBlockedBy ?? [])])],
+                },
+          ),
+    )
+    return ran
+  }).catch(($, e, next) => next(e))
 }

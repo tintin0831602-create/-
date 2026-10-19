@@ -12,8 +12,31 @@ export type TeamTask = {
 }
 export type TeamBoard = { goal: string; members: TeamMember[]; tasks: TeamTask[] }
 
+/** A subagent seen while no team is planned. */
+export type SeenMember = {
+  id: string
+  name: string
+  role: string
+  model: string
+  status: 'pending' | 'running' | 'waiting' | 'idle' | 'completed' | 'failed' | 'killed'
+}
+/** A built-in task (TaskCreate) seen while no team is planned. */
+export type SeenTask = {
+  id: string
+  subject: string
+  status: 'pending' | 'in_progress' | 'completed'
+  owner?: string
+  blockedBy: string[]
+}
+
 declare module 'claude-code' {
   interface PluginState {
-    'agent-teams': { board: TeamBoard | null; frame: number }
+    'agent-teams': {
+      board: TeamBoard | null
+      frame: number
+      seenTitle: string
+      seenMembers: SeenMember[]
+      seenTasks: SeenTask[]
+    }
   }
 }

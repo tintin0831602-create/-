@@ -89,3 +89,15 @@ test('/agent-team demo fills the board, and the pane draws on every surface', as
     await ui.unmount()
   }
 })
+
+test('a /team owned by another plugin does not stop /agent-team from registering', async ($, on) => {
+  const listed: string[] = []
+  on('command.register', (_, e) => {
+    if (e.name === 'team') return { deny: '"/team" refused: it is the plugin\'s /oh-my-claudecode:team' } as never
+    listed.push(e.name)
+    return { value: true } as never
+  })
+  on('session.start', (_, e) => e as never)
+  await $.session.start({ source: 'startup', cwd: '/tmp' } as never).catch(() => undefined)
+  expect(listed).toContain('agent-team')
+})

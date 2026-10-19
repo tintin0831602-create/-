@@ -124,14 +124,17 @@ export function spriteLines(skin: Skin, face: Face) {
   }
   // What a gap colored `fill` costs, between this cell's pixel `near` and the
   // pixel `across` the gap: nothing when it matches both, a little when it
-  // matches the lighter side, more the darker one, most a color of neither or,
-  // at the edge, anything but the edge pixel.
+  // matches one, more when that one is the outline beside a lighter pixel or,
+  // at the edge, a color other than the edge pixel, most a color of neither
+  // side inside the sprite.
   const gap = (fill: string, near: string, across: string | undefined) => {
-    if (across === undefined) return fill === near ? 0 : 10
+    if (across === undefined) return fill === near ? 0 : 4
     if (fill === near && fill === across) return 0
     if (fill !== near && fill !== across) return 6
+    // Matching one side costs little, unless the fill is outline-dark: then it
+    // is a dark line along a lighter pixel.
     const other = fill === near ? across : near
-    return luma(fill) >= luma(other) ? 1 : 3
+    return luma(fill) < 40 && luma(other) >= 40 ? 3 : 1
   }
   type Run = { ch: string; fg?: string; bg?: string }
   const lines: Run[][] = []
@@ -166,7 +169,7 @@ export function spriteLines(skin: Skin, face: Face) {
 }
 
 const SPRITE_W = 12
-const SPRITE_ROWS = 7
+const SPRITE_ROWS = 6
 
 const skinOf = (index: number): Skin => (index % 2 === 0 ? 'sprout' : 'pencil')
 

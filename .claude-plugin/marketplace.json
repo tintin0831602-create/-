@@ -1,0 +1,11 @@
+{
+  "name": "tintin-mods",
+  "owner": { "name": "tintin0831602" },
+  "plugins": [
+    {
+      "name": "team-board",
+      "source": "./claude-mods/team-board",
+      "description": "像素吉祥物的團隊協作面板：隊長、成員、任務進度與依賴樹"
+    }
+  ]
+}

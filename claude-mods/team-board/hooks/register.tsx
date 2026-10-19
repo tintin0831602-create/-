@@ -6,7 +6,7 @@ import { PALETTE_KEYS, SPRITES } from './sprites'
 import type { Face, Skin } from './sprites'
 
 const PANE = 'team-board'
-const COMMANDS = ['team', 'agent-team'] as const
+const COMMANDS = ['agent-team', 'team'] as const
 const title = atom({ plugin: 'team-board', key: 'title' } as const, '')
 const members = atom({ plugin: 'team-board', key: 'members' } as const, [] as Member[])
 const tasks = atom({ plugin: 'team-board', key: 'tasks' } as const, [] as Task[])
@@ -171,8 +171,12 @@ const openBoard: Hook<'command.run'> = async ($, e) => {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
+    // Another plugin may own a name (oh-my-claudecode has /team): the engine
+    // refuses that one, and the others still register.
     for (const name of COMMANDS) {
-      await $.command.register({ name, description: '打開團隊協作面板（加 demo 看示範，加 clear 清空）' })
+      await $.command
+        .register({ name, description: '打開團隊協作面板（加 demo 看示範，加 clear 清空）' })
+        .catch(() => undefined)
     }
 
     // Keeps member statuses current and animates the ones at work.

@@ -27,7 +27,7 @@
 
 ## 使用方式
 
-- `/agent-team` 或 `/team`：打開面板
+- `/agent-team`：打開面板（沒有其他外掛佔用 `/team` 時，`/team` 也可以用；例如裝了 oh-my-claudecode 就只有 `/agent-team`）
 - `/agent-team demo`：填入示範資料，不用真的派出成員就能先看效果
 - `/agent-team clear`：清空面板
 

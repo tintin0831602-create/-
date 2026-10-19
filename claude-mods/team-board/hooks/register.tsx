@@ -103,37 +103,55 @@ export function faceFor(status: MemberStatus, frame: number): Face {
   return 'idle'
 }
 
-// Two pixel rows per terminal row. A cell's background fills its whole height,
-// the gap Terminal.app leaves between rows included, while a glyph does not: so
-// the top pixel goes in the background wherever the bottom one is drawn too
-// (a lower half block over it, or a blank when both match), and a half block
-// alone only at the sprite's edges.
+// Two pixel rows per terminal row. Terminal.app leaves a gap above and below
+// each row that a glyph never paints and a cell's background does, so where a
+// cell holds two colors, one goes in the background and the gaps show it. Each
+// gap sits between a pixel of this cell and its neighbor across the gap: it
+// vanishes when the background matches both, reads as one of them a hair
+// taller when it matches one, and shows as a stray line otherwise.
+// The background is the color whose two gaps cost least, the lighter on a
+// tie. A blank cell when both pixels match; a lone half block (gaps left
+// clear) only at a sprite's edges.
 export function spriteLines(skin: Skin, face: Face) {
   const { palette, frames } = SPRITES[skin]
-  const px = (row: string | undefined, x: number) => {
-    const ch = row?.[x]
+  const rows = frames[face]
+  const px = (y: number, x: number) => {
+    const ch = rows[y]?.[x]
     return ch === undefined || ch === '.' ? undefined : palette[PALETTE_KEYS.indexOf(ch)]
   }
-  const rows = frames[face]
-  const lines: { ch: string; fg?: string; bg?: string }[][] = []
+  // A dark line shows most against the body, so a tie goes to the lighter color.
+  const luma = (hex: string) => {
+    const n = parseInt(hex.slice(1), 16)
+    return 0.3 * (n >> 16) + 0.59 * ((n >> 8) & 255) + 0.11 * (n & 255)
+  }
+  // A gap's cost: 0 unseen, 1 a pixel a hair taller, 2 a stray line inside the
+  // sprite, 4 a stray line outside it, against the pane.
+  const gap = (bg: string, near: string, across: string | undefined) =>
+    bg === near ? (across === bg ? 0 : 1) : across === undefined ? 4 : across === bg ? 1 : 2
+  type Run = { ch: string; fg?: string; bg?: string }
+  const lines: Run[][] = []
   for (let y = 0; y < rows.length; y += 2) {
-    const runs: { ch: string; fg?: string; bg?: string }[] = []
+    const runs: Run[] = []
     for (let x = 0; x < (rows[y]?.length ?? 0); x++) {
-      const top = px(rows[y], x)
-      const bottom = px(rows[y + 1], x)
-      const cell =
-        top && bottom
-          ? top === bottom
-            ? { ch: ' ', bg: top }
-            : { ch: '▄', fg: bottom, bg: top }
-          : top
-            ? { ch: '▀', fg: top }
-            : bottom
-              ? { ch: '▄', fg: bottom }
-              : { ch: ' ' }
+      const top = px(y, x)
+      const bottom = px(y + 1, x)
+      let cell: Run
+      if (top && bottom) {
+        if (top === bottom) cell = { ch: ' ', bg: top }
+        else {
+          const above = px(y - 1, x)
+          const below = px(y + 2, x)
+          const cost = (bg: string) => gap(bg, top, above) + gap(bg, bottom, below)
+          const bg =
+            cost(top) === cost(bottom) ? (luma(bottom) > luma(top) ? bottom : top) : cost(top) < cost(bottom) ? top : bottom
+          cell = bg === bottom ? { ch: '▀', fg: top, bg: bottom } : { ch: '▄', fg: bottom, bg: top }
+        }
+      } else if (top) cell = { ch: '▀', fg: top }
+      else if (bottom) cell = { ch: '▄', fg: bottom }
+      else cell = { ch: ' ' }
       const last = runs[runs.length - 1]
       if (last && last.fg === cell.fg && last.bg === cell.bg && last.ch[0] === cell.ch) last.ch += cell.ch
-      else runs.push({ ...cell })
+      else runs.push(cell)
     }
     lines.push(runs)
   }
@@ -141,7 +159,7 @@ export function spriteLines(skin: Skin, face: Face) {
 }
 
 const SPRITE_W = 12
-const SPRITE_ROWS = 6
+const SPRITE_ROWS = 7
 
 const skinOf = (index: number): Skin => (index % 2 === 0 ? 'sprout' : 'pencil')
 
@@ -381,7 +399,7 @@ export const register: Register = on => {
                 <Box marginTop={1}>
                   <Box flexDirection="column" width={2} flexShrink={0}>
                     {Array.from({ length: SPRITE_ROWS }, (_, row) => (
-                      <Text color={row === 2 ? label.color : C.track}>{row === 2 ? '●' : isLast && row > 2 ? ' ' : '│'}</Text>
+                      <Text color={row === 3 ? label.color : C.track}>{row === 3 ? '●' : isLast && row > 3 ? ' ' : '│'}</Text>
                     ))}
                   </Box>
                   <Sprite skin={skinOf(i)} face={faceFor(m.status, frame + i)} />

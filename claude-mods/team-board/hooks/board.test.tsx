@@ -4,10 +4,10 @@ import { cells, faceFor, spriteLines, taskDepths, taskState, wrapCells } from '.
 
 const PANE = { component: 'Pane', props: { title: '團隊協作', isFocused: false, bodyColumns: 90, placement: 'dock', scroll: { bodyRows: 60, first: 0 }, view: {} } } as const
 
-test('sprites draw as 12 columns by 6 rows with no gaps', () => {
+test('sprites draw as 12 columns by 7 rows with no gaps', () => {
   for (const skin of ['pencil', 'sprout', 'crown'] as const) {
     const lines = spriteLines(skin, 'idle')
-    expect(lines.length).toBe(6)
+    expect(lines.length).toBe(7)
     for (const runs of lines) expect(runs.map(r => r.ch).join('').length).toBe(12)
     expect(lines.flat().every(r => !r.fg || r.fg.startsWith('#'))).toBe(true)
   }

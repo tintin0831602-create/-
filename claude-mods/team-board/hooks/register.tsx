@@ -104,14 +104,13 @@ export function faceFor(status: MemberStatus, frame: number): Face {
 }
 
 // Two pixel rows per terminal row. Terminal.app leaves a gap above and below
-// each row that a glyph never paints and a cell's background does, so where a
-// cell holds two colors, one goes in the background and the gaps show it. Each
-// gap sits between a pixel of this cell and its neighbor across the gap: it
-// vanishes when the background matches both, reads as one of them a hair
-// taller when it matches one, and shows as a stray line otherwise.
-// The background is the color whose two gaps cost least, the lighter on a
-// tie. A blank cell when both pixels match; a lone half block (gaps left
-// clear) only at a sprite's edges.
+// each row that a glyph never paints and a cell's background does, so the
+// background picks what each gap shows. A gap inside the sprite takes the
+// lighter of the pixels on its two sides, never a dark line through the body;
+// a gap at the sprite's edge takes the edge pixel, so the outline stays solid.
+// A cell of one color paints it as a full block over a background of its
+// neighbor's color when that hides the gaps better (an eye in the body); a
+// lone half block, gaps left clear, only where one pixel is empty.
 export function spriteLines(skin: Skin, face: Face) {
   const { palette, frames } = SPRITES[skin]
   const rows = frames[face]
@@ -119,15 +118,21 @@ export function spriteLines(skin: Skin, face: Face) {
     const ch = rows[y]?.[x]
     return ch === undefined || ch === '.' ? undefined : palette[PALETTE_KEYS.indexOf(ch)]
   }
-  // A dark line shows most against the body, so a tie goes to the lighter color.
   const luma = (hex: string) => {
     const n = parseInt(hex.slice(1), 16)
     return 0.3 * (n >> 16) + 0.59 * ((n >> 8) & 255) + 0.11 * (n & 255)
   }
-  // A gap's cost: 0 unseen, 1 a pixel a hair taller, 2 a stray line inside the
-  // sprite, 4 a stray line outside it, against the pane.
-  const gap = (bg: string, near: string, across: string | undefined) =>
-    bg === near ? (across === bg ? 0 : 1) : across === undefined ? 4 : across === bg ? 1 : 2
+  // What a gap colored `fill` costs, between this cell's pixel `near` and the
+  // pixel `across` the gap: nothing when it matches both, a little when it
+  // matches the lighter side, more the darker one, most a color of neither or,
+  // at the edge, anything but the edge pixel.
+  const gap = (fill: string, near: string, across: string | undefined) => {
+    if (across === undefined) return fill === near ? 0 : 10
+    if (fill === near && fill === across) return 0
+    if (fill !== near && fill !== across) return 6
+    const other = fill === near ? across : near
+    return luma(fill) >= luma(other) ? 1 : 3
+  }
   type Run = { ch: string; fg?: string; bg?: string }
   const lines: Run[][] = []
   for (let y = 0; y < rows.length; y += 2) {
@@ -137,14 +142,16 @@ export function spriteLines(skin: Skin, face: Face) {
       const bottom = px(y + 1, x)
       let cell: Run
       if (top && bottom) {
-        if (top === bottom) cell = { ch: ' ', bg: top }
-        else {
-          const above = px(y - 1, x)
-          const below = px(y + 2, x)
-          const cost = (bg: string) => gap(bg, top, above) + gap(bg, bottom, below)
-          const bg =
-            cost(top) === cost(bottom) ? (luma(bottom) > luma(top) ? bottom : top) : cost(top) < cost(bottom) ? top : bottom
-          cell = bg === bottom ? { ch: '▀', fg: top, bg: bottom } : { ch: '▄', fg: bottom, bg: top }
+        const above = px(y - 1, x)
+        const below = px(y + 2, x)
+        const cost = (fill: string) => gap(fill, top, above) + gap(fill, bottom, below)
+        const best = (options: string[]) => options.reduce((a, b) => (cost(b) < cost(a) ? b : a))
+        if (top === bottom) {
+          const fill = best([top, ...(above ? [above] : []), ...(below ? [below] : [])])
+          cell = fill === top ? { ch: ' ', bg: top } : { ch: '█', fg: top, bg: fill }
+        } else {
+          const fill = best([top, bottom])
+          cell = fill === bottom ? { ch: '▀', fg: top, bg: bottom } : { ch: '▄', fg: bottom, bg: top }
         }
       } else if (top) cell = { ch: '▀', fg: top }
       else if (bottom) cell = { ch: '▄', fg: bottom }

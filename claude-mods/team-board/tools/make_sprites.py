@@ -20,21 +20,23 @@ from quant import snap  # noqa: E402
 # Each column's run of color starts on an even row and ends on an odd one, so
 # every terminal cell inside the body holds two pixels and is painted with its
 # background, which also fills the gap Terminal.app leaves between rows. Rows 0
-# and 1 hold the accessory; the body and legs take rows 2 to 13.
+# and 1 hold the accessory. The top and bottom outlines are two rows deep, a
+# whole cell each: a one-row outline shares its cell with the body and leaves
+# one of that cell's gaps a dark line inside the body.
 BODY = [
     '............',
     '............',
     '..oooooooo..',
-    '..osbbbbbo..',
+    '..oooooooo..',
     '.osbbbbbbbo.',
     '.osbbbbbbbo.',
     'oosbbbbbbboo',
     'ossbbbbbbbso',
     'ossbbbbbbbso',
     'oosbbbbbbboo',
-    '.osssbbbbbo.',
     '.oooooooooo.',
-    '...ll..ll...',
+    '.oolloolloo.',
+    '...oo..oo...',
     '...oo..oo...',
 ]
 
@@ -73,8 +75,8 @@ SHARED = {
 
 # The two eyes' columns and their rows, then each face as (row, col) offsets.
 EYES = (4, 8)
-EYE_ROW = 4
-# Faces keep to pixel rows 4 and 5, one row of terminal cells, so no eye pixel
+EYE_ROW = 6
+# Faces keep to pixel rows 6 and 7, one row of terminal cells, so no eye pixel
 # is cut by the gap Terminal.app leaves between cell rows.
 FACES = {
     'idle': [(0, 0), (1, 0)],
@@ -96,7 +98,7 @@ def draw(skin, face):
         for dy, dx in FACES[face]:
             grid[EYE_ROW + dy][col + dx] = 'o'
     if face == 'dead':
-        grid[3][8] = 'w'
+        grid[5][9] = 'w'
     palette = {**SHARED, **COLORS[skin]}
     return [[None if ch == '.' else palette[ch] for ch in row] for row in grid]
 

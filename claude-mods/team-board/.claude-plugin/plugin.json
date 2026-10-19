@@ -1,6 +1,6 @@
 {
   "name": "team-board",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "像素小吉祥物的團隊協作面板：隊長、成員、任務進度一目了然",
   "types": "./types/index.d.ts"
 }

@@ -74,3 +74,60 @@ test('a planned team is saved per session id, so a resumed session can bring it 
   expect(saved.goal).toBe('審查專案')
   expect(saved.tasks.find(t => t.id === 't1')?.status).toBe('in_progress')
 })
+
+test('a planned member can name an OMC agent: the captain reads it and the pane shows it', async ($, on) => {
+  on('session.id', () => ({ value: 'session-1' }))
+  const plan = {
+    ...PLAN,
+    members: [
+      { name: '效能', role: '找瓶頸', model: 'sonnet', agent: 'oh-my-claudecode:executor' },
+      { name: '安全', role: '找漏洞', model: 'opus', agent: 'oh-my-claudecode:verifier' },
+    ],
+  }
+  const planned = (await $.tool.call(plan as never)) as { result?: string }
+  expect(String(planned.result)).toContain('t1(效能/sonnet/oh-my-claudecode:executor)')
+
+  const ui = await mountPane($)
+  expect(await ui.find({ type: 'Text', text: / executor / })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: / verifier / })).toBeDefined()
+  await ui.unmount()
+})
+
+test('an oh-my-claudecode /team run shows in the pane: workers, owned tasks and its phase', async ($, on) => {
+  on('prompt.submit', (_, e) => ({ text: e.text }) as never)
+  on('agent.spawn', () => ({ model: 'claude-sonnet-5-5', agentId: 'a1', teammateId: 'worker-1@session' }))
+  on('tool.call', { tool: 'TaskCreate' }, () => ({ result: { task: { id: '1', subject: '修好型別錯誤' } } }))
+  on('tool.call', { tool: 'TaskUpdate' }, (_, e) => ({ result: { success: true, taskId: e.tool === 'TaskUpdate' ? e.taskId : '', updatedFields: [] } }))
+  on('tool.call', { tool: 'mcp__plugin_oh-my-claudecode_t__state_write' }, () => ({ result: 'ok' }) as never)
+
+  await $.prompt.submit({ text: '/team 1:executor "fix all TypeScript errors"', command: { name: 'team' } } as never)
+  await $.tool.call({ tool: 'mcp__plugin_oh-my-claudecode_t__state_write', mode: 'team', current_phase: 'team-exec' } as never)
+  await $.tool.call({ tool: 'TaskCreate', subject: '修好型別錯誤', description: 'x' } as never)
+  await $.tool.call({ tool: 'TaskUpdate', taskId: '1', owner: 'worker-1', status: 'in_progress' } as never)
+  await $.agent.spawn({ prompt: 'go', description: '修好 src/auth 的型別錯誤', subagentType: 'oh-my-claudecode:executor' } as never)
+
+  const ui = await mountPane($)
+  const has = async (text: RegExp) => expect(await ui.find({ type: 'Text', text })).toBeDefined()
+  await has(/fix all TypeScript errors/)
+  await has(/OMC 階段 team-exec/)
+  await has(/worker-1/)
+  await has(/ sonnet /)
+  await has(/ executor /)
+  await has(/ t1 /)
+  await ui.unmount()
+})
+
+test('a TodoWrite list stands for the tasks when none came through TaskCreate', async ($, on) => {
+  on('tool.call', { tool: 'TodoWrite' }, () => ({ result: { oldTodos: [], newTodos: [] } }) as never)
+  await $.tool.call({
+    tool: 'TodoWrite',
+    todos: [
+      { content: '規劃', status: 'completed', activeForm: '規劃中' },
+      { content: '實作', status: 'in_progress', activeForm: '實作中' },
+    ],
+  } as never)
+  const ui = await mountPane($)
+  expect(await ui.find({ type: 'Text', text: /1\/2 完成/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /d2/ })).toBeDefined()
+  await ui.unmount()
+})

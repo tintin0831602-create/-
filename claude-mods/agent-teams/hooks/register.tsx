@@ -58,7 +58,10 @@ const PLAIN_AGENTS = `   agent：省略（沒有安裝 oh-my-claudecode，成員
 
 /** The captain's protocol for `goal`, naming oh-my-claudecode's agents when it is installed. */
 async function protocolFor($: Engine, goal: string) {
-  const commands = await $.command.list().catch(() => [])
+  // Older Claude Code builds lack $.command.list: plain subagents then.
+  const commands = await Promise.resolve()
+    .then(() => $.command.list())
+    .catch(() => [])
   const hasOmc = commands.some(c => c.plugin === 'oh-my-claudecode' || c.name.startsWith('oh-my-claudecode:'))
   return PROTOCOL.replace('{GOAL}', goal).replace('{AGENTS}', hasOmc ? OMC_AGENTS : PLAIN_AGENTS)
 }
@@ -306,7 +309,8 @@ export const register: Register = on => {
 
   on('command.run', { command: 'agent-teams' }, async ($, e) => {
     const goal = String(e.args ?? '').trim()
-    await $.ui.open({ id: PANE, title: '團隊協作' })
+    // Where no pane can open (phone, print mode), the team still runs.
+    await $.ui.open({ id: PANE, title: '團隊協作' }).catch(() => undefined)
     if (goal === '') return { text: '已開啟團隊面板。用 /agent-teams <目標> 開始。' }
 
     // A command.run hook may not submit a prompt itself (it would wait on the
@@ -378,7 +382,7 @@ export const register: Register = on => {
       await update($, seenTasks, () => [])
       await update($, seenPhase, () => '')
     }
-    await $.ui.open({ id: PANE, title: '團隊協作' })
+    await $.ui.open({ id: PANE, title: '團隊協作' }).catch(() => undefined)
 
     return { text: arg === 'clear' ? '已清空團隊面板。' : '已開啟團隊面板。' }
   })

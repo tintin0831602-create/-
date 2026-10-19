@@ -1,6 +1,6 @@
 {
   "name": "agent-teams",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Captain-led agent teams for Claude Code: dependency-aware task board, team tools, and a pixel-mascot team pane that also follows plain subagents.",
   "types": "./types/index.d.ts"
 }

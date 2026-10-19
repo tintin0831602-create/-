@@ -49,7 +49,8 @@ export function createBoard(input: PlanInput): Outcome {
     if (!isText(m?.name) || !isText(m?.role)) return { error: '每個成員都需要 name 和 role' }
     if (members.some(x => x.name === m.name)) return { error: `成員名稱重複：${m.name}` }
     if (m.model !== undefined && !isModel(m.model)) return { error: `成員 ${m.name}：model 必須是 ${MODELS.join('/')}` }
-    members.push({ name: m.name, role: m.role, model: m.model })
+    if (m.agent !== undefined && !isText(m.agent)) return { error: `成員 ${m.name}：agent 必須是子代理類型名稱` }
+    members.push({ name: m.name, role: m.role, model: m.model, ...(m.agent ? { agent: m.agent } : {}) })
   }
 
   // Tasks may reference later tasks, so deps are checked against every planned id.
@@ -179,7 +180,9 @@ export function applyUpdate(board: TeamBoard, id: unknown, status: unknown, outp
 /** The text a team tool returns to the captain. */
 export function summarize(board: TeamBoard): string {
   const count = (s: TeamStatus) => board.tasks.filter(t => t.status === s).length
-  const label = (t: TeamTask) => `${t.id}${t.assignee ? `(${t.assignee}/${modelOf(board, t) ?? '預設模型'})` : ''}`
+  const agentOf = (t: TeamTask) => board.members.find(m => m.name === t.assignee)?.agent
+  const label = (t: TeamTask) =>
+    `${t.id}${t.assignee ? `(${t.assignee}/${modelOf(board, t) ?? '預設模型'}${agentOf(t) ? `/${agentOf(t)}` : ''})` : ''}`
   const names = (ts: TeamTask[]) => (ts.length ? ts.map(label).join('、') : '無')
   const ready = readyTasks(board)
   const open = board.tasks.some(t => !TERMINAL.includes(t.status))
@@ -190,7 +193,7 @@ export function summarize(board: TeamBoard): string {
     `被失敗/取消的相依卡住：${names(blockedTasks(board))}`,
     open
       ? ready.length
-        ? '請同時啟動所有可開始的任務；Agent 工具的 model 參數用括號內的模型。'
+        ? '請同時啟動所有可開始的任務；Agent 工具的 model 參數用括號內的模型，括號內有子代理類型時 subagent_type 用它。'
         : '請等進行中的任務完成後再呼叫 team_status。'
       : '所有任務都結束了：請用繁體中文寫出整合報告。',
   ].join('\n')

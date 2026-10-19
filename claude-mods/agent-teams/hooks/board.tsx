@@ -10,7 +10,15 @@ import { currentStage, reruns } from './team'
 // planned team (team_plan) or the subagents and tasks seen without one map to.
 
 export type MemberStatus = 'pending' | 'running' | 'waiting' | 'idle' | 'completed' | 'failed' | 'killed'
-export type ViewMember = { key: string; name: string; role: string; model?: string; status: MemberStatus }
+export type ViewMember = {
+  key: string
+  name: string
+  role: string
+  model?: string
+  /** The subagent type doing its work, such as oh-my-claudecode:executor. */
+  agent?: string
+  status: MemberStatus
+}
 export type ViewTask = {
   id: string
   subject: string
@@ -27,6 +35,8 @@ export type View = {
   /** A planned team's stage and reruns; absent for subagents seen without one. */
   stage?: { index: number; total: number }
   reruns?: number
+  /** The phase an oh-my-claudecode /team run reports (team-plan, team-exec, team-verify, ...). */
+  phase?: string
 }
 
 // Text, dim text and lines take the theme's own colors, so the pane reads in
@@ -44,7 +54,8 @@ const C = {
   track: 'subtle',
   chipText: '#121212',
   chipBg: '#3a3a3a',
-  chipLabel: '#bcbcbc',
+  chipLabel: '#e4e4e4',
+  agentBg: '#5f5f87',
 }
 
 const MEMBER_LABEL: Record<MemberStatus, { text: string; color: string }> = {
@@ -208,9 +219,18 @@ export function spriteLines(skin: Skin, face: Face) {
 const SPRITE_W = 12
 const SPRITE_ROWS = 6
 
+/** A model's family, from an alias (sonnet) or a full id (claude-sonnet-5-5); the id itself otherwise. */
+export const modelFamily = (model: string | undefined) => model?.match(/haiku|sonnet|opus|fable/)?.[0] ?? model
+
 /** A member's mascot: sonnet the pencil, opus and fable the crown, the rest the sprout. */
-export const skinOf = (model: string | undefined): Skin =>
-  model === 'sonnet' ? 'pencil' : model === 'opus' || model === 'fable' ? 'crown' : 'sprout'
+export const skinOf = (model: string | undefined): Skin => {
+  const family = modelFamily(model)
+  return family === 'sonnet' ? 'pencil' : family === 'opus' || family === 'fable' ? 'crown' : 'sprout'
+}
+
+/** An agent type as a chip says it: oh-my-claudecode:executor is executor; a general one says nothing. */
+export const agentLabel = (agent: string | undefined) =>
+  agent && agent !== 'general-purpose' ? agent.replace(/^oh-my-claudecode:/, '') : undefined
 
 /** What a planned member is doing, from the tasks assigned to it. */
 function memberStatusOf(board: TeamBoard, name: string): MemberStatus {
@@ -230,6 +250,7 @@ export function viewOfBoard(board: TeamBoard): View {
       name: m.name,
       role: m.role,
       model: m.model,
+      agent: m.agent,
       status: memberStatusOf(board, m.name),
     })),
     tasks: board.tasks.map(t => ({
@@ -298,6 +319,7 @@ export function teamPane(els: Elements, view: View, frame: number, width: number
   const meta = [
     ...(view.stage ? [`第 ${view.stage.index}/${view.stage.total} 階段`] : []),
     ...(view.reruns !== undefined ? [`重跑 ${view.reruns} 次`] : []),
+    ...(view.phase ? [`OMC 階段 ${view.phase}`] : []),
   ].join(' · ')
 
   // The dependency tree: one column per depth, left to right, a column
@@ -384,7 +406,9 @@ export function teamPane(els: Elements, view: View, frame: number, width: number
               <Chip text={TASK_LABEL[focusState]} bg={TASK_COLOR[focusState]} />
             </Box>
             <Text color={C.dim}>
-              {focusOwner ? `${focusOwner.name}${focusOwner.model ? ` · ${focusOwner.model}` : ''}` : `負責人：${focus.owner ?? '未指派'}`}
+              {focusOwner
+                ? [focusOwner.name, modelFamily(focusOwner.model), agentLabel(focusOwner.agent)].filter(Boolean).join(' · ')
+                : `負責人：${focus.owner ?? '未指派'}`}
             </Text>
             {waitingOn.length > 0 && <Text color={C.orange}>等待 {waitingOn.join('、')} 完成</Text>}
             {focus.output && (
@@ -493,7 +517,10 @@ export function teamPane(els: Elements, view: View, frame: number, width: number
                     {clip(m.role, infoWidth)}
                   </Text>
                   <Box justifyContent="space-between">
-                    <Chip text={m.model ?? '預設模型'} bg={C.chipBg} color={C.chipLabel} />
+                    <Box columnGap={1}>
+                      <Chip text={modelFamily(m.model) ?? '預設模型'} bg={C.chipBg} color={C.chipLabel} />
+                      {agentLabel(m.agent) && <Chip text={agentLabel(m.agent) ?? ''} bg={C.agentBg} color={C.chipLabel} />}
+                    </Box>
                     {own.length > 0 && (
                       <Text color={C.dim}>
                         {own.filter(t => t.status === 'completed').length}/{own.length}

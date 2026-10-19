@@ -23,6 +23,8 @@ const frame = atom({ plugin: 'agent-teams', key: 'frame' } as const, 0)
 const seenTitle = atom({ plugin: 'agent-teams', key: 'seenTitle' } as const, '')
 const seenMembers = atom({ plugin: 'agent-teams', key: 'seenMembers' } as const, [] as SeenMember[])
 const seenTasks = atom({ plugin: 'agent-teams', key: 'seenTasks' } as const, [] as SeenTask[])
+// The phase an oh-my-claudecode /team run last wrote to its state (team-plan, team-exec, ...).
+const seenPhase = atom({ plugin: 'agent-teams', key: 'seenPhase' } as const, '')
 // A mascot's face changes every this many frames, a little under a second.
 const FRAMES_PER_FACE = 3
 
@@ -31,14 +33,35 @@ const PROTOCOL = `你是一個 agent 團隊的隊長。使用者的目標：
 {GOAL}
 
 流程（全程用繁體中文回覆）：
-1. 呼叫 ${PLAN}：2-6 位成員（name、role、model）和任務（id、subject、assignee、deps）。互相獨立的任務不要設相依，才能並行。
+1. 呼叫 ${PLAN}：2-6 位成員（name、role、model、agent）和任務（id、subject、assignee、deps）。互相獨立的任務不要設相依，才能並行。
    模型選擇：${MODELS.join(' / ')}。簡單查找用 haiku、一般實作用 sonnet、架構與審查用 opus、最難的推理用 fable。
-2. 用繁體中文向使用者列出成員（含模型）、任務與相依，然後用 AskUserQuestion 問：「開始執行」「調整模型」「增加步驟」。
+{AGENTS}
+   驗證：團隊一定要有一位「驗證員」，以及最後一個驗證任務，相依於所有工作任務。
+2. 用繁體中文向使用者列出成員（含模型與代理人）、任務與相依，然後用 AskUserQuestion 問：「開始執行」「調整模型」「增加步驟」。
    調整模型就呼叫 ${SET_MODEL}，增加步驟就呼叫 ${ADD_TASK}，改完再問一次，直到使用者選「開始執行」。
-3. 每個可開始的任務：先呼叫 ${UPDATE} 設為 in_progress，再用 Agent 工具執行（每個任務一個子 agent，多個任務在同一則訊息中並行；model 參數用該成員的模型），並把任務內容、成員角色、相依任務的輸出交給它。
+3. 每個可開始的任務：先呼叫 ${UPDATE} 設為 in_progress，再用 Agent 工具執行（每個任務一個子 agent，多個任務在同一則訊息中並行；model 參數用該成員的模型，成員有 agent 時 subagent_type 用它），並把任務內容、成員角色、相依任務的輸出交給它。
 4. 子 agent 回來後，呼叫 ${UPDATE} 設為 completed 並附上簡短 output；失敗就設為 failed。失敗的任務可以用 status "pending" 重跑（會累計重跑次數）。
-5. 呼叫 ${STATUS} 看哪些任務變成可開始，重複步驟 3-4 直到全部結束。
-6. 最後用繁體中文給出整合報告。不要自己替成員做事。`
+5. 呼叫 ${STATUS} 看哪些任務變成可開始，重複步驟 3-4。
+6. 驗證任務要拿出實際證據（測試、建置、執行結果），不能只說「應該可以」。驗證發現問題時：
+   用 ${ADD_TASK} 為每個問題加一個修正任務（交給適合的成員，相依於該驗證任務），再加一個重新驗證任務（相依於這些修正任務），回到步驟 3。
+   最多修正 2 輪；第 2 輪後仍有問題，就在報告裡如實列出還沒解決的部分。
+7. 全部結束後用繁體中文給出整合報告，包含驗證結果。不要自己替成員做事。`
+
+// With oh-my-claudecode installed, every member is one of its specialist agents
+// and the verifier is its verifier; without it, members are general subagents.
+const OMC_AGENTS = `   agent：已安裝 oh-my-claudecode，每位成員都必須設定 agent，從這些代理人中選最適合的：
+     oh-my-claudecode:executor（實作）、oh-my-claudecode:architect（架構，唯讀）、oh-my-claudecode:debugger（除錯）、
+     oh-my-claudecode:scientist（研究、資料分析）、oh-my-claudecode:writer（文件）、oh-my-claudecode:designer（介面設計）、
+     oh-my-claudecode:code-reviewer（程式審查）、oh-my-claudecode:security-reviewer（安全審查）、oh-my-claudecode:test-engineer（測試）。
+     驗證員的 agent 一定是 oh-my-claudecode:verifier。`
+const PLAIN_AGENTS = `   agent：省略（沒有安裝 oh-my-claudecode，成員用一般子代理）。`
+
+/** The captain's protocol for `goal`, naming oh-my-claudecode's agents when it is installed. */
+async function protocolFor($: Engine, goal: string) {
+  const commands = await $.command.list().catch(() => [])
+  const hasOmc = commands.some(c => c.plugin === 'oh-my-claudecode' || c.name.startsWith('oh-my-claudecode:'))
+  return PROTOCOL.replace('{GOAL}', goal).replace('{AGENTS}', hasOmc ? OMC_AGENTS : PLAIN_AGENTS)
+}
 
 const DEMO: TeamBoard = {
   goal: '查詢最近的 AI 新聞並總結（示範）',
@@ -68,18 +91,29 @@ const SEEN_STATUS: Record<string, MemberStatus> = {
   killed: 'killed',
 }
 
+// A TaskCreate id shows as t<id>; a TodoWrite entry's d<n> shows as it is.
+const shownId = (id: string) => (/^\d+$/.test(id) ? `t${id}` : id)
+
 /** The view of the subagents and tasks seen without a planned team. */
-function viewOfSeen(title: string, members: SeenMember[], tasks: SeenTask[]): View {
+function viewOfSeen(title: string, members: SeenMember[], tasks: SeenTask[], phase: string): View {
   return {
     title: title || '團隊協作',
-    members: members.map(m => ({ key: m.id, name: m.name, role: m.role, model: m.model, status: SEEN_STATUS[m.status] ?? 'idle' })),
+    members: members.map(m => ({
+      key: m.id,
+      name: m.name,
+      role: m.role,
+      model: m.model,
+      agent: m.agent,
+      status: SEEN_STATUS[m.status] ?? 'idle',
+    })),
     tasks: tasks.map(t => ({
-      id: `t${t.id}`,
+      id: shownId(t.id),
       subject: t.subject,
       status: t.status,
       owner: members.find(m => m.id === t.owner || m.name === t.owner)?.id ?? t.owner,
-      blockedBy: t.blockedBy.map(b => `t${b}`),
+      blockedBy: t.blockedBy.map(shownId),
     })),
+    ...(phase ? { phase } : {}),
   }
 }
 
@@ -185,7 +219,12 @@ export const register: Register = on => {
             items: {
               type: 'object',
               required: ['name', 'role'],
-              properties: { name: { type: 'string' }, role: { type: 'string' }, model: { type: 'string', enum: [...MODELS] } },
+              properties: {
+                name: { type: 'string' },
+                role: { type: 'string' },
+                model: { type: 'string', enum: [...MODELS] },
+                agent: { type: 'string', description: '執行這位成員任務的子代理類型，例如 oh-my-claudecode:executor；省略則用一般子代理' },
+              },
             },
           },
           tasks: { type: 'array', items: task },
@@ -273,8 +312,9 @@ export const register: Register = on => {
     // A command.run hook may not submit a prompt itself (it would wait on the
     // turn the hook is holding), so the protocol goes out on a timer, once the
     // command has answered.
+    const protocol = await protocolFor($, goal)
     $.clock.after(0, () => {
-      $.prompt.submit({ text: PROTOCOL.replace('{GOAL}', goal) }).catch(() => $.ui.toast('團隊流程未能送出，請再試一次 /agent-teams。'))
+      $.prompt.submit({ text: protocol }).catch(() => $.ui.toast('團隊流程未能送出，請再試一次 /agent-teams。'))
     })
 
     return { text: `開始規劃團隊：${goal}` }
@@ -319,7 +359,9 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const els = $.ui.resolve(e)
     const team = await read($, board)
-    const view = team ? viewOfBoard(team) : viewOfSeen(await read($, seenTitle), await read($, seenMembers), await read($, seenTasks))
+    const view = team
+      ? viewOfBoard(team)
+      : viewOfSeen(await read($, seenTitle), await read($, seenMembers), await read($, seenTasks), await read($, seenPhase))
     const tick = Math.floor((await read($, frame)) / FRAMES_PER_FACE)
 
     return teamPane(els, view, tick, Math.max(30, e.props.bodyColumns ?? 40))
@@ -334,6 +376,7 @@ export const register: Register = on => {
       await update($, seenTitle, () => '')
       await update($, seenMembers, () => [])
       await update($, seenTasks, () => [])
+      await update($, seenPhase, () => '')
     }
     await $.ui.open({ id: PANE, title: '團隊協作' })
 
@@ -342,9 +385,9 @@ export const register: Register = on => {
 
   // Without a planned team, the pane follows the subagents and built-in tasks Claude starts.
   on('prompt.submit', async ($, e, next) => {
-    if (!e.isMeta && !e.command && e.text.trim() && (await read($, seenTitle)) === '') {
-      await update($, seenTitle, () => e.text.trim().split('\n')[0] ?? '')
-    }
+    // A command's text names it first (/team 3:executor "fix the build"): the title is what follows.
+    const said = (e.command ? e.text.trim().replace(/^\/\S+\s*/, '') : e.text.trim()).split('\n')[0] ?? ''
+    if (!e.isMeta && said && (await read($, seenTitle)) === '') await update($, seenTitle, () => said)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -356,6 +399,7 @@ export const register: Register = on => {
         name: out.teammateId?.split('@')[0] ?? e.subagentType,
         role: e.description,
         model: out.model,
+        ...(e.subagentType !== 'general-purpose' ? { agent: e.subagentType } : {}),
         status: 'running',
       }
       await update($, seenMembers, ms => [...ms, member])
@@ -396,6 +440,29 @@ export const register: Register = on => {
                 },
           ),
     )
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  // A TodoWrite list stands for the tasks when none came through TaskCreate.
+  on('tool.call', { tool: 'TodoWrite' }, async ($, e, next) => {
+    const ran = await next(e)
+    if (ran.isError || e.tool !== 'TodoWrite') return ran
+    const todos = e.todos
+    await update($, seenTasks, ts =>
+      ts.some(t => /^\d+$/.test(t.id))
+        ? ts
+        : todos.map((todo, i) => ({ id: `d${i + 1}`, subject: todo.content, status: todo.status, blockedBy: [] })),
+    )
+    return ran
+  }).catch(($, e, next) => next(e))
+
+  // oh-my-claudecode's /team records its stage with a state_write tool (any server name).
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    const phase = (e as { current_phase?: unknown }).current_phase
+    if (!ran.isError && e.tool.endsWith('__state_write') && typeof phase === 'string' && phase.trim()) {
+      await update($, seenPhase, () => phase.trim())
+    }
     return ran
   }).catch(($, e, next) => next(e))
 }

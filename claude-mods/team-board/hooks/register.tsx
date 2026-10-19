@@ -12,19 +12,19 @@ const members = atom({ plugin: 'team-board', key: 'members' } as const, [] as Me
 const tasks = atom({ plugin: 'team-board', key: 'tasks' } as const, [] as Task[])
 const tick = atom({ plugin: 'team-board', key: 'tick' } as const, 0)
 
-// Each color sits on one of the xterm-256 cells, so Terminal.app (no 24-bit
-// color) shows what a truecolor terminal does. A docked pane is drawn on the
-// engine's own dark gray in every theme, so text takes explicit light colors:
-// the theme's default would be black under a light theme.
+// Text, dim text and lines take the theme's own colors, so the pane reads in
+// light and dark themes alike. The rest sit on xterm-256 cells, so Terminal.app
+// (no 24-bit color) shows what a truecolor terminal does, in mid-tones that
+// read on both.
 const C = {
-  text: '#e4e4e4',
-  dim: '#9e9e9e',
+  text: 'text',
+  dim: 'inactive',
   green: '#4caf4c',
   blue: '#4c7fff',
   orange: '#d77f00',
   red: '#ff4c4c',
   gray: '#767676',
-  track: '#444444',
+  track: 'subtle',
   chipText: '#121212',
   chipBg: '#3a3a3a',
   chipLabel: '#bcbcbc',
@@ -103,8 +103,11 @@ export function faceFor(status: MemberStatus, frame: number): Face {
   return 'idle'
 }
 
-// Two pixel rows per terminal row: the upper half block takes the top pixel as
-// its color and the bottom pixel as its background.
+// Two pixel rows per terminal row. A cell's background fills its whole height,
+// the gap Terminal.app leaves between rows included, while a glyph does not: so
+// the top pixel goes in the background wherever the bottom one is drawn too
+// (a lower half block over it, or a blank when both match), and a half block
+// alone only at the sprite's edges.
 export function spriteLines(skin: Skin, face: Face) {
   const { palette, frames } = SPRITES[skin]
   const px = (row: string | undefined, x: number) => {
@@ -118,11 +121,16 @@ export function spriteLines(skin: Skin, face: Face) {
     for (let x = 0; x < (rows[y]?.length ?? 0); x++) {
       const top = px(rows[y], x)
       const bottom = px(rows[y + 1], x)
-      const cell = top
-        ? { ch: '▀', fg: top, bg: bottom }
-        : bottom
-          ? { ch: '▄', fg: bottom }
-          : { ch: ' ' }
+      const cell =
+        top && bottom
+          ? top === bottom
+            ? { ch: ' ', bg: top }
+            : { ch: '▄', fg: bottom, bg: top }
+          : top
+            ? { ch: '▀', fg: top }
+            : bottom
+              ? { ch: '▄', fg: bottom }
+              : { ch: ' ' }
       const last = runs[runs.length - 1]
       if (last && last.fg === cell.fg && last.bg === cell.bg && last.ch[0] === cell.ch) last.ch += cell.ch
       else runs.push({ ...cell })

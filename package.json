@@ -13,7 +13,10 @@
     "check": "tsc --noEmit",
     "rich-menu:build": "node scripts/build-rich-menu.mjs",
     "rich-menu:upload": "node scripts/upload-rich-menu.mjs",
-    "webhook:set": "node scripts/set-line-webhook.mjs"
+    "webhook:set": "node scripts/set-line-webhook.mjs",
+    "usage:install": "npx --yes coding-usage-bar@0.5 install",
+    "usage:doctor": "npx --yes coding-usage-bar@0.5 doctor",
+    "usage:status": "npx --yes coding-usage-bar@0.5 status --refresh"
   },
   "dependencies": {
     "@google/genai": "^2.6.0",
